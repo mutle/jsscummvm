@@ -7,11 +7,16 @@
     loadGameFile: function(game, file_no, callback) {
       var callback = callback;
       var filename = game + ".00"+file_no.toString();
-      game_url = "games/"+game+"/"+filename;
-      $.ajax({type: "GET", url: game_url, dataType: "text", success: function(data) {
+      game_url = "/games/"+game+"/"+filename;
+      $.ajax({type: "GET", url: game_url, dataType: "text", cache:false, success: function(data) {
           ScummVM.engine.setFile(filename, data);
           if(callback) callback();
-      }});
+      }, beforeSend: function(xhr) { xhr.overrideMimeType("text/plain; charset=x-user-defined"); } });
+    },
+    xorString: function(str, encByte) {
+      stream = new ScummVM.Stream(str);
+      stream.encByte = encByte;
+      return stream.readString(str.length);
     },
     MKID_BE: function(id) {
       s = new ScummVM.Stream(id);

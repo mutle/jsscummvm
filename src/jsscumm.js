@@ -5,6 +5,16 @@ var ScummVM = {
   engine: null
 };
 
+function log(message) {
+  $("#console").append(message+"<br />");
+}
+
+function assert(condition) {
+  if(!condition) {
+    log("ASSERTION FAILED!");
+  }
+}
+
 (function(){
   var canvas = document.getElementById("jsscummvm");
   var context = canvas.getContext('2d');

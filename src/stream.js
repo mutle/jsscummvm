@@ -7,7 +7,7 @@
   };
   ScummVM.Stream.prototype = {
     readByteAt: function(pos){
-        return this.buffer.charCodeAt(pos) & 0xff;
+      return this.buffer.charCodeAt(pos) & 0xff ^ this.encByte;
     },
     readNumber: function(numBytes, bigEnd){
         var t = this,
@@ -50,8 +50,28 @@
     readUI32: function(bigEnd){
         return this.readNumber(4, bigEnd);
     },
+    readString: function(numChars){
+      var t = this,
+          b = t.buffer;
+      if(undefined != numChars){
+          var str = b.substr(t.offset, numChars);
+          t.offset += numChars;
+      }else{
+          numChars = t.length - t.offset;
+          var chars = [],
+              i = numChars;
+          while(i--){
+              var code = t.readByteAt(t.offset++);
+              if(code){ chars.push(String.fromCharCode(code)); }
+              else{ break; }
+          }
+          var str = chars.join('');
+      }
+      return str;
+    },
     seek: function(offset, absolute){
       this.offset = (absolute ? 0 : this.offset) + offset;
+      if(this.offset > this.length) alert("jumped too far");
       return this;
     },
     eof: function() {

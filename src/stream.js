@@ -1,22 +1,31 @@
 (function(){
-  ScummVM.Stream = function(data) {
+  ScummVM.Stream = function(data, filename, size) {
+    this.filename = filename;
     this.buffer = data;
-    this.length = this.buffer.length;
+    if(filename == "")
+      this.length = size || 0;
+    else
+      this.length = this.buffer.length;
     this.offset = 0;
     this.encByte = 0;
   };
   ScummVM.Stream.prototype = {
-    streamAtOffset: function(offset, absolute, size) {
-      stream = new ScummVM.Stream(this.buffer);
-      if(!absolute) offset += this.offset;
-      log("building stream at offset "+offset+" size "+(size || stream.length));
-      stream.offset = offset;
+    newStream: function(offset, size) {
+      stream = new ScummVM.Stream(this.buffer.substring(offset, offset+size), this.filename);
       stream.encByte = this.encByte;
-      if(size) stream.length = size;
+      debug(7, "New Stream "+this.filename+" at offset "+offset+" total size "+this.length+" stream size "+stream.length);
+      return stream;
+    },
+    newRelativeStream: function(offset) {
+      stream = new ScummVM.Stream(this.buffer, this.filename);
+      stream.offset = this.offset;
+      stream.encByte = this.encByte;
+      stream.seek(offset);
+      debug(7, "New relative Stream "+this.filename+" at offset "+stream.offset+" total size "+stream.length);
       return stream;
     },
     readByteAt: function(pos){
-      return this.buffer.charCodeAt(pos) & 0xff ^ this.encByte;
+      return (this.buffer.charCodeAt(pos) & 0xff) ^ this.encByte;
     },
     readNumber: function(numBytes, bigEnd){
         var t = this,
@@ -61,21 +70,24 @@
     },
     readString: function(numChars){
       var t = this,
-          b = t.buffer;
+          b = t.buffer, str,
+          chars = [];
       if(undefined != numChars){
-          var str = b.substr(t.offset, numChars);
+        if(t.encByte == 0x00) {
+          str = b.substr(t.offset, numChars);
           t.offset += numChars;
+          return str;
+        }
       }else{
-          numChars = t.length - t.offset;
-          var chars = [],
-              i = numChars;
-          while(i--){
-              var code = t.readByteAt(t.offset++);
-              if(code){ chars.push(String.fromCharCode(code)); }
-              else{ break; }
-          }
-          var str = chars.join('');
+        numChars = t.length - t.offset;
       }
+      var i = numChars;
+      while(i--){
+          var code = t.readByteAt(t.offset++);
+          if(code){ chars.push(String.fromCharCode(code)); }
+          else{ break; }
+      }
+      str = chars.join('');
       return str;
     },
     seek: function(offset, absolute){

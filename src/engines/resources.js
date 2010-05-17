@@ -1,7 +1,7 @@
 (function(){
   var _system = ScummVM.system;
 
-  var resourceTypes = ["charset", "room", "script", "costume", "sound"];
+  var resourceTypes = ["charset", "room", "script", "costume", "sound", "buffer", "string"];
 
   var RES_INVALID_OFFSET = 0xFFFFFFFF,
       OF_OWNER_MASK = 0x0F,
@@ -30,11 +30,42 @@
       }
       return false;
     },
-    createResource: function(type, idx, size) {
-      var t = this,
-          res = t.types[type];
+    createResource: function(type, idx, size, source) {
+      var t = this, stream,
+          res = t.types[type],
+          file = t.engine._file;
 
-      return t.engine._files[1].streamAtOffset(res.roomoffs[idx] + 4, true, size);
+      if(source == -1) {
+        buf = "";
+        for(i = 0; i < size; i ++) {
+          buf += String.fromCharCode(0);
+        }
+        stream = new ScummVM.Stream(buf, "", size);
+      } else {
+        if(source) file = source;
+
+        stream = file.newStream(file.offset, size);
+      }
+
+      debug(5, "creating "+type+" resource "+idx+" in file "+stream.filename+" size "+size);
+      res.address[idx] = stream;
+
+      return stream;
+    },
+    allocResTypeData: function(id, tag, num, name, mode) {
+      var t = this,
+          res = t.types[id];
+      res.mode = mode;
+      res.num = num;
+      res.tags = tag;
+      res.name = name;
+      res.status = 0;
+      res.address = new Array(); res.roomno = new Array(); res.roomoffs = new Array();
+      for(i = 0; i < num; i++) {
+        res.roomno[i] = 0;
+        res.roomoffs[i] = 0;
+        res.address[i] = null;
+      }
     }
   };
 
@@ -49,6 +80,7 @@
   }
 
   s.openResourceFile = function(filename) {
+    debug(3, "opening "+filename);
     this._file = this._files[this._filenames[filename]];
     return true;
   }
@@ -64,28 +96,28 @@
     while(true) {
       blocktype = file.readUI32(true);
       itemsize = file.readUI32(true);
-      // log(_system.reverse_MKID(blocktype)+ " "+itemsize);
       if(file.eof()) break;
+      // log(_system.reverse_MKID(blocktype)+ " "+itemsize);
 
       switch(blocktype) {
       case MKID_BE("DOBJ"):
-        this._nums['global_objects'] = file.readUI16(false);
+        this._nums['global_objects'] = file.readUI16();
         itemsize -= 2;
       break;
       case MKID_BE("DROO"):
-        this._nums['rooms'] = file.readUI16(false);
+        this._nums['rooms'] = file.readUI16();
         itemsize -= 2;
       break;
       case MKID_BE("DSCR"):
-        this._nums['scripts'] = file.readUI16(false);
+        this._nums['scripts'] = file.readUI16();
         itemsize -= 2;
       break;
       case MKID_BE("DCOS"):
-        this._nums['costumes'] = file.readUI16(false);
+        this._nums['costumes'] = file.readUI16();
         itemsize -= 2;
       break;
       case MKID_BE("DSOU"):
-        this._nums['sounds'] = file.readUI16(false);
+        this._nums['sounds'] = file.readUI16();
         itemsize -= 2;
       break;
       // default:
@@ -98,8 +130,6 @@
     while(true) {
       blocktype = file.readUI32(true);
       itemsize = file.readUI32(true);
-      // log(_system.reverse_MKID(blocktype)+ " "+itemsize);
-
       if(file.eof()) break;
 
       numblock++;
@@ -123,9 +153,8 @@
       case MKID_BE("RNAM"):
         // Unused
         for(var room; room = file.readUI8(); ) {
-          file.readString(9)
-          // name = _system.xorString(file.readString(9), 0xFF);
-          // log("Room "+room+": "+name);
+          name = _system.xorString(file.readString(9), 0xFF);
+          debug(5, "Room "+room+": "+name);
         }
       break;
       case MKID_BE("DROO"):
@@ -142,6 +171,7 @@
       break;
       case MKID_BE("MAXS"):
         t.readMAXS(file, itemsize);
+        t.allocateArrays();
       break;
       case MKID_BE("DIRN"):
       case MKID_BE("DSOU"):
@@ -158,9 +188,9 @@
 
   s.readRoomsOffsets = function() {
     var t = this,
-        file = t._file,
+        file = t._files[1],
         res = t._res.types["room"];
-    num = file.seek(12, true).readUI8();
+    num = file.seek(16, true).readUI8();
     while(num--) {
       room = file.readUI8();
       if(!res.roomoffs[room]) {
@@ -196,6 +226,7 @@
     if(t._lastLoadedRoom == room)
       return;
     t._lastLoadedRoom = room;
+    debug(3, "loading room " + room);
     if(room == -1) {
       t.deleteRoomOffsets();
       file.reset();
@@ -208,18 +239,23 @@
       this.readRoomsOffsets();
 
       filename = t.generateFilename(room);
-      result = t.openResourceFile(filename);
-      if(result) {
+      if(t.openResourceFile(filename)) {
+        file = t._file;
         if(room == 0)
           return;
 
-        t.deleteRoomOffsets();
-        t.readRoomsOffsets();
-        if(t.offset != 8)
+        // t.deleteRoomOffsets();
+        // t.readRoomsOffsets();
+
+        t._fileOffset = res.roomoffs[room];
+
+        if(t._fileOffset != 8)
           return;
       }
+      log("ask for disk "+diskNumber);
     }
     t.deleteRoomOffsets();
+    t._fileOffset = 0;
   };
 
   s.readResTypeList = function(file, type) {
@@ -230,8 +266,6 @@
     var res = t._res.types[type];
 
     res.num = num;
-
-    log("loading res type list "+type);
 
     for(i = 0; i < num; i++) {
       res.roomno[i] = file.readUI8();
@@ -261,6 +295,23 @@
     t._nums['fl_object'] = 50;
   };
 
+  s.allocateArrays = function() {
+    var t = this, i,
+        res = t._res,
+        nums = t._nums,
+        MKID_BE = _system.MKID_BE;
+
+    for(i = 0; i < nums['variables']; i++) {
+      t._scummVars[i] = 0;
+    }
+    for(i = 0; i < nums['bit_variables'] >> 3; i++) {
+      t._bitVars[i] = 0;
+    }
+    res.allocResTypeData("room", MKID_BE('ROOM'), nums['rooms'], "room", 1);
+    res.allocResTypeData("script", MKID_BE('SCRP'), nums['scripts'], "script", 1);
+    res.allocResTypeData("string", 0, nums['array'], "array", 0);
+  };
+
   s.readGlobalObjects = function(file) {
     var t = this, i, num;
 
@@ -274,6 +325,10 @@
     for(i = 0; i < num; i++) {
       t._classData[i] = file.readUI32();
     };
+  };
+
+  s.loadCharset = function(no) {
+    error("Loading charset "+no);
   };
 
   s.getResourceRoomNr = function(type, idx) {
@@ -314,15 +369,16 @@
   s.loadResource = function(type, idx) {
     var t = this, roomNr,
         res = t._res.types[type],
-        fileOffs, size, tag
+        fileOffs, size, tag;
 
     roomNr = t.getResourceRoomNr(type, idx);
-    log("loading resource "+type+" "+idx+" in room "+roomNr);
     if(idx >= res.num) {
       error("resource undfined, index out of bounds");
     }
     if(roomNr == 0)
       roomNr = t._roomResource;
+
+    log("loading resource "+type+" "+idx+" in room "+roomNr);
 
     if(type == "room") {
       fileOffs = 0;
@@ -336,12 +392,28 @@
 
     var file = t._file;
 
-    file.seek(fileOffs, false);
-    size = file.readUI16();
-    res.address[idx] = t._res.createResource(type, idx, size);
+    file.seek(t._fileOffset + fileOffs, true);
+
+    tag = file.readUI32(true);
+    size = file.readUI32(true);
+    debug(5, _system.reverse_MKID(tag) + " "+size);
+    file.seek(-8);
+
+    t._res.createResource(type, idx, size);
 
     if(t._dumpScripts && type == "script")
       t.dumpResource("script-", idx, t.getResourceAddress("script", idx));
+  };
+
+  s.loadPtrToResource = function(type, resindex, source) {
+    var t = this, len;
+    len = t.resStrLen(source) + 1;
+    if(len <= 0)
+      return;
+
+    if(!source) source = t._scriptPointer;
+    ptr = t._res.createResource(type, resindex, len, source);
+    source.seek(len);
   };
 
   s.dumpResource = function(tag, idx, stream) {

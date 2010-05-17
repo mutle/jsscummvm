@@ -19,7 +19,7 @@
         var filename = game + ".00"+file_no.toString();
         var game_url = "games/"+game+"/"+filename;
 
-        if(window.localStorage[game_url]) {
+        if(navigator.vendor.match("Apple") && window.localStorage[game_url]) {
           log(game_url + " loaded from cache");
           ScummVM.engine.setFile(file_no, filename, localStorage[game_url]);
           filesToLoad--;
@@ -42,12 +42,12 @@
       return filesToLoad == 0;
     },
     xorString: function(str, encByte) {
-      stream = new ScummVM.Stream(str);
+      stream = new ScummVM.Stream(str, "");
       stream.encByte = encByte;
       return stream.readString(str.length);
     },
     MKID_BE: function(id) {
-      s = new ScummVM.Stream(id);
+      s = new ScummVM.Stream(id, "");
       return s.readUI32(true);
     },
     reverse_MKID: function(value) {

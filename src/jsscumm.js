@@ -2,12 +2,24 @@ var ScummVM = {
   width: 320,
   height: 200,
   engines: {},
-  engine: null
+  engine: null,
+  canvas: null,
+  context: null,
+  debugLevel: 3
 };
 
 function log(message) {
-  window.console.log(message);
-  $("#console").append(message+"<br />");
+  // window.console.log(message);
+  $("#console").prepend(message+"<br />");
+}
+
+function debug(level, message) {
+  if(level <= ScummVM.debugLevel)
+    log(message);
+}
+
+function error(message) {
+  log("ERROR "+message);
 }
 
 function assert(condition) {
@@ -21,12 +33,16 @@ function assert(condition) {
   var context = canvas.getContext('2d');
   ScummVM.load = function(game) {
     var t = ScummVM;
+    t.canvas = canvas;
+    t.context = context
     t.init_graphics();
     t.engine = ScummVM.engines.SCUMM;
     t.engine.init(game);
     t.engine.go();
   };
   ScummVM.init_graphics = function() {
-    context.fillRect(0,0,this.width,this.height);
+    var t = this;
+    t.context.fillRect(0,0,this.width,this.height);
   };
+
 }());

@@ -1,17 +1,45 @@
 (function(){
+  var filesToLoad = 0;
+
   ScummVM.system = {
     getMillis: function() {
       d = new Date();
       return d.getTime();
     },
-    loadGameFile: function(game, file_no, callback) {
+    loadGameFiles: function(game, file_nos, callback) {
       var callback = callback;
-      var filename = game + ".00"+file_no.toString();
-      game_url = "/games/"+game+"/"+filename;
-      $.ajax({type: "GET", url: game_url, dataType: "text", cache:false, success: function(data) {
-          ScummVM.engine.setFile(filename, data);
-          if(callback) callback();
-      }, beforeSend: function(xhr) { xhr.overrideMimeType("text/plain; charset=x-user-defined"); } });
+      var t = this, i;
+
+      filesToLoad += file_nos.length;
+
+      for(i = 0; i < file_nos.length; i++) {
+        var i = i;
+        (function() { // Fix var scope
+        var file_no = file_nos[i];
+        var filename = game + ".00"+file_no.toString();
+        var game_url = "games/"+game+"/"+filename;
+
+        if(window.localStorage[game_url]) {
+          log(game_url + " loaded from cache");
+          ScummVM.engine.setFile(file_no, filename, localStorage[game_url]);
+          filesToLoad--;
+          if(t.finishedLoading() && callback)
+            callback();
+        } else {
+          $.ajax({type: "GET", url: game_url, dataType: "text", cache:false, success: function(data) {
+            log(game_url + " loaded");
+            window.localStorage[game_url] = data;
+            ScummVM.engine.setFile(file_no, filename, data);
+            filesToLoad--;
+            if(t.finishedLoading() && callback)
+              callback();
+          }, beforeSend: function(xhr) { xhr.overrideMimeType("text/plain; charset=x-user-defined"); } });
+        }
+        })();
+      }
+    },
+    finishedLoading: function() {
+      return filesToLoad == 0;
     },
     xorString: function(str, encByte) {
       stream = new ScummVM.Stream(str);

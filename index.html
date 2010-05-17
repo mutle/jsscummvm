@@ -1,17 +1,24 @@
 <html>
 <head>
+  <title>JS ScummVM</title>
 </head>
 <body>
+
+  <h1>JS ScummVM</h1>
+  <h2>Monkey Island</h2>
+
   <canvas id="jsscummvm" width="320" height="200"></canvas>
+  <div id="console"></div>
+
   <script type="text/javascript" src="jquery-1.4.2.min.js"></script>
   <script type="text/javascript" src="src/jsscumm.js"></script>
   <script type="text/javascript" src="src/system.js"></script>
   <script type="text/javascript" src="src/stream.js"></script>
   <script type="text/javascript" src="src/engines/scumm.js"></script>
   <script type="text/javascript" src="src/engines/resources.js"></script>
+  <script type="text/javascript" src="src/engines/script.js"></script>
   <script type="text/javascript">
     ScummVM.load("monkey1");
   </script>
-  <div id="console"></div>
 </body>
 </html>

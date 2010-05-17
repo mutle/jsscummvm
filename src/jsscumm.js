@@ -6,6 +6,7 @@ var ScummVM = {
 };
 
 function log(message) {
+  window.console.log(message);
   $("#console").append(message+"<br />");
 }
 

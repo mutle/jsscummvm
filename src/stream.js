@@ -6,6 +6,15 @@
     this.encByte = 0;
   };
   ScummVM.Stream.prototype = {
+    streamAtOffset: function(offset, absolute, size) {
+      stream = new ScummVM.Stream(this.buffer);
+      if(!absolute) offset += this.offset;
+      log("building stream at offset "+offset+" size "+(size || stream.length));
+      stream.offset = offset;
+      stream.encByte = this.encByte;
+      if(size) stream.length = size;
+      return stream;
+    },
     readByteAt: function(pos){
       return this.buffer.charCodeAt(pos) & 0xff ^ this.encByte;
     },
@@ -71,7 +80,8 @@
     },
     seek: function(offset, absolute){
       this.offset = (absolute ? 0 : this.offset) + offset;
-      if(this.offset > this.length) alert("jumped too far");
+      if(this.offset > this.length)
+        log("jumped too far");
       return this;
     },
     eof: function() {

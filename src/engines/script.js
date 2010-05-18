@@ -8,7 +8,7 @@
     t.number = 0;
     t.offs = 0;
     t.status = "dead";
-    t.where = 0;
+    t.where = "";
     t.freezeResistant = false;
     t.recursive = false;
     t.freezeCount = 0;
@@ -22,7 +22,7 @@
   s.NestedScript = function() {
     var t = this;
     t.number = 0;
-    t.where = 0;
+    t.where = "";
     t.slot = 0;
   };
 
@@ -74,7 +74,6 @@
 
   s.runScript = function(script, freezeResistant, recursive, args, cycle) {
     var t = this, slot, scriptPtr, scriptOffs, scriptType;
-    log("running script "+script);
     if(!script) return;
     if(!recursive) t.stopScript(script);
 
@@ -109,12 +108,14 @@
 
   s.runScriptNested = function(slot) {
     var t = this, nest;
+
+    t.updateScriptPtr();
+
     nest = t._vm.nest[t._vm.numNestedScripts];
-    log("running script nested "+slot.number);
 
     if(t._currentScript == 0xFF) {
       nest.number = 0xFF;
-      nest.where = 0xFF;
+      nest.where = "";
     } else {
       nest.number = slot.number;
       nest.where = slot.where;
@@ -128,6 +129,7 @@
     t.getScriptEntryPoint();
     t.executeScript();
 
+
     if(t._vm.numNestedScripts > 0)
       t._vm.numNestedScripts--;
 
@@ -140,6 +142,14 @@
 
     t._currentScript = 0xFF;
   };
+
+  s.updateScriptPtr = function() {
+    var t = this;
+    if(t._currentScript == 0xFF) {
+      return;
+    }
+    t._vm.slot[t._currentScript].offs = t._scriptPointer.offset;
+  }
 
   s.stopScript = function(script) {
     var t = this, i, slot, nest,
@@ -163,7 +173,7 @@
         // nukeArrays(nest.slot);
         nest.number = 0xFF;
         nest.slot = 0xFF;
-        nest.where = 0xFF;
+        nest.where = "";
       }
 
     }
@@ -196,13 +206,13 @@
     if(t._currentScript == 0xFF)
       return;
 
-    slot = t._vm.slot[t._currentScript]
+    // slot = t._vm.slot[t._currentScript]
     slot = t.getScriptSlot(t._currentScript);
-    debug(5, "Loading a "+slot.where+" script");
+    debug(3, "Loading a "+slot.where+" script "+slot.number);
     switch(slot.where) {
       case "global":
         t._scriptOrgPointer = t.getResourceAddress("script", slot.number);
-        t._lastCodePointer = t._scriptOrgPointer.newRelativeStream(0);
+        t._lastCodePointer = t._scriptOrgPointer;
       break;
       default:
         log("Unknown script location "+slot.where);
@@ -219,14 +229,23 @@
 
   s.executeScript = function() {
     var t = this;
-    log("executing begin "+t._currentScript);
+    var slot = t._vm.slot[t._currentScript];
     while(t._currentScript != 0xFF) {
-      log("executing "+t._currentScript);
-      _opcode = t.fetchScriptByte();
-      t._vm.slot[t._currentScript].didexec = true;
+      if(t._scriptPointer.offset >= t._scriptPointer.length) {
+        error("Script out of bounds");
+        log(t._scriptPointer.offset);
+        slot.number = 0;
+        slot.status = "dead";
+        t._currentScript = 0xFF;
+        return;
+      }
+      slot = t._vm.slot[t._currentScript];
+      // log("executing "+t._currentScript);
+      t._opcode = t.fetchScriptByte();
+      slot.didexec = true;
 
-      debug(5, "executing opcode 0x"+_opcode.toString(16));
-      t.executeOpcode(_opcode);
+      debug(5, "executing opcode 0x"+t._opcode.toString(16));
+      t.executeOpcode(t._opcode);
     }
     log("execute done");
   };
@@ -259,9 +278,10 @@
   };
 
   s.jumpRelative = function(cond) {
-    var t = this, offset = t.fetchScriptWord();
-    if(!cond)
+    var t = this, offset = t.fetchScriptWordSigned();
+    if(!cond) {
       t._scriptPointer.seek(offset);
+    }
   }
 
   s.push = function(a) {
@@ -277,11 +297,15 @@
   s.stopObjectCode = function() {
     var t = this, slot = t._vm.slot[t._currentScript];
 
+    log("stopObjectCode");
+
     if(slot.where != "global" && slot.where != "local") {
       t.stopObjectScript(slot.number);
     } else {
+      log("killing script "+slot.number+" in slot "+slot.slot);
       slot.number = 0;
-      slot.status = "dead";
+      // slot.slot = 0;
+       slot.status = "dead";
     }
     t._currentScript = 0xFF;
   }
@@ -390,27 +414,45 @@
     t.writeVar(t._resultVarNumber, value);
   };
 
+  s.updateCodePointer = function() {
+    var t = this;
+
+    return;
+    // log("checking if update is needed "+t._lastCodePointer.offset+" != "+ t._scriptOrgPointer.offset);
+    //if(t._lastCodePointer != t._scriptOrgPointer) {
+      log("pointer reset");
+      oldoffs = t._scriptPointer.offset;
+      t.getScriptBaseAddress();
+      t._scriptPointer.seek(oldoffs);
+    //}
+  }
+
   s.fetchScriptByte = function() {
+    this.updateCodePointer();
     var t = this, b = t._scriptPointer;
     return b.readUI8();
   };
 
   s.fetchScriptWord = function() {
+    this.updateCodePointer();
     var t = this, b = t._scriptPointer;
     return b.readUI16();
   };
 
   s.fetchScriptWordSigned = function() {
+    this.updateCodePointer();
     var t = this, b = t._scriptPointer;
     return b.readSI16();
   };
 
   s.fetchScriptDWord = function() {
+    this.updateCodePointer();
     var t = this, b = t._scriptPointer;
     return b.readUI32();
   };
 
   s.fetchScriptDWordSigned = function() {
+    this.updateCodePointer();
     var t = this, b = t._scriptPointer;
     return b.readSI32();
   };
@@ -419,10 +461,8 @@
     log("opcode unimplemented");
   };
 
-  s._opcodes = {
-    0x00: function() { // stopObjectCode
-    },
-    0x0a: function() { //startScript
+  s._opcodeCommands = {
+    startScript: function() {
       var op, script, data;
 
       op = s._opcode;
@@ -433,7 +473,7 @@
 
       s.runScript(script, (op & 0x20) != 0, (op & 0x40) != 0, data);
     },
-    0x0c: function() { // resourceRoutines
+    resourceRoutines: function() {
      var resType = ["script", "sound", "costume", "room"], resid = 0;
      s._opcode = s.fetchScriptByte();
      if(s._opcode != 17)
@@ -455,19 +495,21 @@
        break;
        case 11: // lock costume
        break;
+       case 17:
+       break;
        case 18: // charset
          s.loadCharset(resid);
        break;
        default:
-         error("unimplemented resourceRoutines opcode "+op);
+         log("unimplemented resourceRoutines opcode "+op);
        break;
      }
     },
-    0x1a: function() { // move
+    move: function() {
       s.getResultPos();
       s.setResult(s.getVarOrDirectWord(PARAM_1));
     },
-    0x2c: function() { // cursorCommand
+    cursorCommand: function() {
       s._opcode = s.fetchScriptByte();
       switch(s._opcode & 0x1F) {
         case 1: // on
@@ -485,7 +527,7 @@
         break;
       }
     },
-    0x26 : function() { // setVarRange
+    setVarRange : function() {
       var a, b;
       s.getResultPos();
       a = s.fetchScriptByte();
@@ -498,7 +540,7 @@
         s._resultVarNumber++;
       } while(--a);
     },
-    0x27: function() { // stringOps
+    stringOps: function() {
       var a, b, c, i;
       s._opcode = s.fetchScriptByte();
       switch(s._opcode & 0x1F) {
@@ -529,7 +571,7 @@
         break;
       }
     },
-    0x33: function() { // roomOps
+    roomOps: function() {
       var a = 0, b = 0, c, d, e;
       s._opcode = s.fetchScriptByte();
       switch(s._opcode & 0x1F) {
@@ -541,32 +583,42 @@
           d = s.getVarOrDirectByte(PARAM_1);
           // setPalColor(d, a, b, c);
         break;
+        case 10: // room fase
+          a = s.getVarOrDirectWord(PARAM_1);
+          if(a) {
+            // _switchRoomEffect
+          } else {
+            // fadeIn
+          }
+        break;
         default:
           log("unimplemented roomOps opcode " + (s._opcode & 0x1F));
         break;
       }
     },
-    0x48: function() { // isEqual
+    isEqual: function() {
       var a, b, varId;
       varId = s.fetchScriptWord();
       a = s.readVar(varId);
       b = s.getVarOrDirectWord(PARAM_1);
       s.jumpRelative(b == a);
     },
-    0x4c: unimplementedOpcode, // soundKludge
-    0x56: function() { //getActorMoving
+    unimplementedOpcode: unimplementedOpcode,
+    getActorMoving: function() {
       log("actor moving");
     },
-    0x65: function() {
-    },
-    0xa0: function() { // stopObjectCode
+    stopObjectCode: function() {
       s.stopObjectCode();
     },
-    0xa8: function() { // notEqualZero
+    notEqualZero: function() {
+      var a = s.getVar();
+      s.jumpRelative(a != 0);
+    },
+    equalZero: function() {
       var a = s.getVar();
       s.jumpRelative(a == 0);
     },
-    0xac: function() { // expression
+    expression: function() {
       var dst;
       s._scummStackPos = 0;
       s.getResultPos();
@@ -589,7 +641,161 @@
           break;
         }
       }
+    },
+    verbOps: function() {
+      var verb
+
+      verb = s.getVarOrDirectByte(PARAM_1);
+
+      while((s._opcode = s.fetchScriptByte()) != 0xFF) {
+        switch(s._opcode & 0x1F) {
+          case 2: // name
+          break;
+          default:
+            log("unimplemented verbOps opcode " + (s._opcode & 0x1F));
+          break;
+        }
+      }
+    },
+    drawObject: function() {
+      var state = 1, obj, idx, i, xpos = 255, ypos = 255;
+
+      obj = s.getVarOrDirectWord(PARAM_1);
+      // xpos = s.getVarOrDirectWord(PARAM_2);
+      // ypos = s.getVarOrDirectWord(PARAM_3);
+      // log("draw object "+obj+" x"+xpos+" y"+ypos);
+      // log(s._scriptPointer.offset + " / " + s._scriptPointer.length);
+      // return;
+      s._opcode = s.fetchScriptByte();
+      switch(s._opcode & 0x1F) {
+        case 0:
+        case 1:
+          xpos = s.getVarOrDirectWord(PARAM_1);
+          ypos = s.getVarOrDirectWord(PARAM_2);
+        break;
+        case 2:
+          state = s.getVarOrDirectWord(PARAM_1);
+        break;
+        case 0x1F:
+        break;
+        default:
+          log("unimplemented drawObject opcode " + (s._opcode & 0x1F));
+        break;
+      }
+      // idx = s.getObjectIndex(obj);
+      // if(idx == -1) return;
+
+      // addObjectToDrawQueue(idx)
+    },
+    setState: function() {
+      var obj, state;
+      obj = s.getVarOrDirectWord(PARAM_1);
+      state = s.getVarOrDirectByte(PARAM_2);
+      // s.pushSatate(obj, state);
+      // s.markObjAsDirty(obj);
+      // if(s._bgNeedsRedraw)
+      //   s.clearDrawObjectQueue();
+    },
+    getActorElevation: function() {
+      var act;
+      s.getResultPos();
+      act = s.getVarOrDirectByte(PARAM_1);
+      // actor stuff
+    },
+    drawBox: function() {
+      var x,y,x2,y2, color;
+      x = s.getVarOrDirectWord(PARAM_1);
+      y = s.getVarOrDirectWord(PARAM_2);
+      s._opcode = s.fetchScriptByte();
+      log("drawBox opcode "+s._opcode);
+      log(s._scriptPointer.offset + " / " + s._scriptPointer.length);
+      x2 = s.getVarOrDirectWord(PARAM_1);
+      y2 = s.getVarOrDirectWord(PARAM_2);
+      color = s.getVarOrDirectByte(PARAM_3);
+      log(x+"/"+y+" "+x2+"/"+y2+" c "+color);
+      log(s._scriptPointer.offset + " / " + s._scriptPointer.length);
+
+      // s.drawBox(x, y, x2, y2, color);
+    },
+    pseudoRoom: function() {
+      var i = s.fetchScriptByte(), j;
+      while((j = s.fetchScriptByte()) != 0) {
+        if(j >= 0x80) {
+          //resourceMapper stuff
+        }
+      }
+    },
+    setOwnerOf: function() {
+      var obj = s.getVarOrDirectWord(PARAM_1), owner = s.getVarOrDirectByte(PARAM_2);
+      // s.setOwnerOf(obj, owner);
+    },
+    getRandomNr: function() {
+      s.getResultPos();
+      s.setResult(Math.floor(Math.random()*s.getVarOrDirectByte(PARAM_1)));
+    },
+    actorOps: function() {
+      var a = s.getVarOrDirectByte(PARAM_1);
+
+      while((s._opcode = s.fetchScriptByte()) != 0xFF) {
+        log("actor ops "+(s._opcode & 0x1F)+" "+s._opcode);
+        switch(s._opcode & 0x1F) {
+          case 0:
+          case 1: // costume
+          case 3: // sound
+          case 4: // walk animation
+          case 6:
+          case 16: // actor width
+          case 19: // always zclip
+            // unimplemented
+            s.getVarOrDirectByte(PARAM_1);
+          break;
+          case 8: // default
+          case 18: // never zclip
+          case 28: // skip?
+          break;
+          default:
+            log("unimplemented actorOps opcode " + (s._opcode & 0x1F));
+          break;
+        }
+      }
+    },
+    breakHere: function() {
+      s.updateScriptPtr();
+      s._currentScript = 0xFF;
+    },
+    jumpRelative: function() {
+      s.jumpRelative(false);
     }
+  };
+
+  s._opcodes = {
+    0x00: s._opcodeCommands.stopObjectCode,
+    0x05: s._opcodeCommands.drawObject,
+    0x06: s._opcodeCommands.getActorElevation,
+    0x07: s._opcodeCommands.setState,
+    0x0a: s._opcodeCommands.startScript,
+    0x0c: s._opcodeCommands.resourceRoutines,
+    0x16: s._opcodeCommands.getRandomNr,
+    0x18: s._opcodeCommands.jumpRelative,
+    0x1a: s._opcodeCommands.move,
+    0x2c: s._opcodeCommands.cursorCommand,
+    0x26: s._opcodeCommands.setVarRange,
+    0x27: s._opcodeCommands.stringOps,
+    0x28: s._opcodeCommands.equalZero,
+    0x33: s._opcodeCommands.roomOps,
+    0x48: s._opcodeCommands.isEqual,
+    0x53: s._opcodeCommands.actorOps,
+    0x56: s._opcodeCommands.getActorMoving,
+    0x65: s._opcodeCommands.unimplementedOpcode,
+    0x69: s._opcodeCommands.setOwnerOf,
+    0x7a: s._opcodeCommands.verbOps,
+    0x80: s._opcodeCommands.breakHere,
+    0x9a: s._opcodeCommands.move,
+    0xa0: s._opcodeCommands.stopObjectCode,
+    0xa8: s._opcodeCommands.notEqualZero,
+    0xac: s._opcodeCommands.expression,
+    0xcc: s._opcodeCommands.pseudoRoom,
+    0xff: s._opcodeCommands.drawBox
   };
 
 }());

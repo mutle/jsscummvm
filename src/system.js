@@ -42,12 +42,12 @@
       return filesToLoad == 0;
     },
     xorString: function(str, encByte) {
-      stream = new ScummVM.Stream(str, "");
+      stream = new ScummVM.Stream(str, "", str.length);
       stream.encByte = encByte;
       return stream.readString(str.length);
     },
     MKID_BE: function(id) {
-      s = new ScummVM.Stream(id, "");
+      s = new ScummVM.Stream(id, "", 4);
       return s.readUI32(true);
     },
     reverse_MKID: function(value) {

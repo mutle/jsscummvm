@@ -378,7 +378,7 @@
     if(roomNr == 0)
       roomNr = t._roomResource;
 
-    log("loading resource "+type+" "+idx+" in room "+roomNr);
+    debug(5, "loading resource "+type+" "+idx+" in room "+roomNr);
 
     if(type == "room") {
       fileOffs = 0;

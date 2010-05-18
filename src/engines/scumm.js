@@ -81,8 +81,6 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     loop: function() {
       var t = ScummVM.engines.SCUMM;
 
-      return;
-
       // this.processInput();
       // Do SCUMM stuff
       if(t._completeScreenRedraw) {
@@ -92,13 +90,13 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
       }
 
       t.runAllScripts();
+
       // Verbs
       if(t.shouldQuit()) {
         window.clearInterval(t._timer);
         return;
       }
 
-      log(t._currentRoom);
       if(t._currentRoom == 0) {
         t.drawDirtyScreenParts();
       } else {
@@ -107,7 +105,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
         t.drawDirtyScreenParts();
       }
 
-      t._shouldQuit = true;
+      // t._shouldQuit = true;
     },
     shouldQuit: function() {
       var t = ScummVM.engines.SCUMM;

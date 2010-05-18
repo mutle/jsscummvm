@@ -3,14 +3,23 @@
       s = ScummVM.engines.SCUMM;
 
   s.startScene = function(room, actor, objectNr) {
-    var t = this;
+    var t = this, slot;
 
     log("Start scene "+room);
-    // runExitScript
+    // fadeOut
+    slot = t.getScriptSlot(t._currentScript);
+    if(t._currentScript != 0xFF) {
+      if(slot.where == "room" || slot.where == "flobject" || slot.where == "local") {
+        t._currentScript = 0xFF;
+      }
+    }
+
+    t.runExitScript();
     // killScriptsAndResources
-    // clearDrawQueue
+    // clearDrawQueues
     t._fullRedraw = true;
     t._currentRoom = room;
+    t._roomResource = room;
     // clearRoomObjects
     if(t._currentRoom == 0)
       return;
@@ -22,7 +31,7 @@
       return;
 
     // showActors
-    // runEntryScript
+    t.runEntryScript();
   }
 
 }());

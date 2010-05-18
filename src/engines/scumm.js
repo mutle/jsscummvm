@@ -44,6 +44,8 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _timer: 0,
     _virtscreens: [],
     _resultVarNumber: 0,
+    _string: [],
+    _actorToPrintStrFor: 0,
     init: function(game) {
       this._game = game;
       this.initGraphics();
@@ -90,8 +92,8 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
       }
 
       t.runAllScripts();
-
       // Verbs
+
       if(t.shouldQuit()) {
         window.clearInterval(t._timer);
         return;
@@ -105,7 +107,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
         t.drawDirtyScreenParts();
       }
 
-      // t._shouldQuit = true;
+      t._shouldQuit = true;
     },
     shouldQuit: function() {
       var t = ScummVM.engines.SCUMM;
@@ -122,6 +124,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     resetScumm: function() {
       var t = this;
       t.initScreens(16, 144);
+      t._currentRoom = 0;
     }
   };
 }());

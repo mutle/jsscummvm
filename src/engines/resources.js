@@ -1,7 +1,7 @@
 (function(){
   var _system = ScummVM.system;
 
-  var resourceTypes = ["charset", "room", "script", "costume", "sound", "buffer", "string"];
+  var resourceTypes = ["charset", "room", "script", "costume", "sound", "buffer", "string", "actor_name"];
 
   var RES_INVALID_OFFSET = 0xFFFFFFFF,
       OF_OWNER_MASK = 0x0F,
@@ -309,6 +309,7 @@
     }
     res.allocResTypeData("room", MKID_BE('ROOM'), nums['rooms'], "room", 1);
     res.allocResTypeData("script", MKID_BE('SCRP'), nums['scripts'], "script", 1);
+    res.allocResTypeData("actor_name", 0, nums['actors'], "actor name", 0);
     res.allocResTypeData("string", 0, nums['array'], "array", 0);
   };
 

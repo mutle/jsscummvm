@@ -1,7 +1,7 @@
 (function(){
   var _system = ScummVM.system;
 
-  var resourceTypes = ["charset", "room", "script", "costume", "sound", "buffer", "string", "actor_name"];
+  var resourceTypes = ["charset", "room", "room_image", "room_script", "script", "costume", "sound", "buffer", "string", "actor_name", "object_name", "inventory", "scale_table", "verb", "fl_object", "matrix", "image"];
 
   var RES_INVALID_OFFSET = 0xFFFFFFFF,
       OF_OWNER_MASK = 0x0F,
@@ -67,6 +67,21 @@
         res.address[i] = null;
       }
     }
+  };
+
+  s.ObjectData = function() {
+    var t = this;
+    t.OBIMoffset = 0;
+    t.OBCDoffset = 0;
+    t.walk_x = 0; t.walk_y = 0;
+    t.obj_nr = 0;
+    t.x_pos = 0; t.y_pos = 0;
+    t.width = 0; t.height = 0;
+    t.actordir = 0;
+    t.parent = 0; t.parentstate = 0;
+    t.state = 0;
+    t.fl_object_index = 0;
+    t.flags = 0;
   };
 
   s.indexFile = function() {
@@ -293,6 +308,7 @@
     t._nums['global_scripts'] = 200;
     t._nums['shadow_pallete_size'] = 256;
     t._nums['fl_object'] = 50;
+    t._nums['images'] = 0;
   };
 
   s.allocateArrays = function() {
@@ -304,13 +320,27 @@
     for(i = 0; i < nums['variables']; i++) {
       t._scummVars[i] = 0;
     }
+    for(i = 0; i < nums['local_objects']; i++) {
+      t._objs[i] = new t.ObjectData();
+    }
     for(i = 0; i < nums['bit_variables'] >> 3; i++) {
       t._bitVars[i] = 0;
     }
     res.allocResTypeData("room", MKID_BE('ROOM'), nums['rooms'], "room", 1);
+    res.allocResTypeData("room_image", MKID_BE('RMIM'), nums['rooms'], "room image", 1);
     res.allocResTypeData("script", MKID_BE('SCRP'), nums['scripts'], "script", 1);
+    // charset
+    res.allocResTypeData("object_name", 0, nums['new_names'], "new name", 0);
+    // inventory
+    // temp ?
+    // scale_table
     res.allocResTypeData("actor_name", 0, nums['actors'], "actor name", 0);
+    // verb
     res.allocResTypeData("string", 0, nums['array'], "array", 0);
+    res.allocResTypeData("fl_object", 0, nums['fl_object'], "flobject", 0);
+    // matrix
+    res.allocResTypeData("image", MKID_BE('AWIZ'), nums['images'], "images", 1);
+
   };
 
   s.readGlobalObjects = function(file) {
@@ -421,6 +451,44 @@
     var size = stream.length;
     log("dump "+tag+idx)
     log(stream.readString(size));
+  };
+
+  s.findResource = function(tag, source) {
+    var t = this, curpos, totalsize, size, searchin;
+
+    searchin = source.newRelativeStream(4);
+    t._resourceLastSearchSize = totalsize = searchin.readUI32(true);
+    curpos = 8;
+
+    while(curpos < totalsize) {
+      t = searchin.readUI32(true)
+      if(t == tag) {
+        log("found tag "+_system.reverse_MKID(tag));
+        t._resourceLastSearchBuf = searchin;
+        size = searchin.readUI32(true);
+        searchin.seek(-8);
+        return searchin.newStream(searchin.offset, size);
+      }
+      size = searchin.readUI32(true);
+      if(size <= 8)
+        return null;
+
+      searchin.seek(size - 8);
+      curpos += size;
+    }
+    return null;
+  };
+
+  s.findResourceData = function(tag, source) {
+    var t = this,
+        res = t.findResource(tag, source);
+    if(res) res.seek(t._resourceHeaderSize);
+    return res;
+  };
+
+  s.getResourceDataSize = function(stream) {
+    var t = this, size = stream.readUI32(true) - t._resourceHeaderSize;
+    return size;
   };
 
 }());

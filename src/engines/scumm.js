@@ -15,8 +15,10 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _game: "",
     _roomoffs: {},
     _roomno: {},
+    _roomResource: 0,
     _lastLoadedRoom: -1,
     _nums: {},
+    _objs: [],
     _objectRoomTable: [],
     _objectOwnerTable: [],
     _objectStateTable: [],
@@ -29,6 +31,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _vmstack: [],
     _currentScript: 0xFF,
     _currentRoom: 0,
+    _numObjectsInRoom: 0,
     _scriptPointer: null,
     _scriptOrgPointer: null,
     _lastCodePointer: null,
@@ -37,7 +40,6 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _verbs: [],
     _opcodes: {},
     _scriptFile: null,
-    _roomResource: 0,
     _dumpScripts: false,
     _completeScreenRedraw: true,
     _shouldQuit: false,
@@ -46,6 +48,19 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _resultVarNumber: 0,
     _string: [],
     _actorToPrintStrFor: 0,
+    _roomPalette: [],
+    _currentPalette: [],
+    _palDirtyMin: 0,
+    _palDirtyMax: 0,
+    _curPalIndex: 0,
+    _resourceHeaderSize: 8,
+    _resourceLastSearchSize: 0,
+    _resourceLastSearchBuf: null,
+    _gdi: null,
+    _gfx: {ENCD: 0, EXCD:0, EPAL:0, CLUT:0, PALS:0},
+    _drawObjectQue: [],
+    _debugMode: 0,
+    _screenStartStrip: 0,
     init: function(game) {
       this._game = game;
       this.initGraphics();
@@ -103,6 +118,13 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
         t.drawDirtyScreenParts();
       } else {
         // Actors, Camera, Objects
+        if(t._bgNeedsRedraw || t._fullRedraw)
+          t.redrawBGAreas();
+
+        if(t.scummVar("main_script")) {
+          t.runScript(t.scummVar("main_script"), 0, 0, 0);
+        }
+
         t.updatePalette();
         t.drawDirtyScreenParts();
       }
@@ -122,9 +144,27 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
       t._vm = new t.VirtualMachineState();
     },
     resetScumm: function() {
-      var t = this;
+      var t = this, i;
       t.initScreens(16, 144);
       t._currentRoom = 0;
+      for(i = 0; i < 256; i++)
+        t._roomPalette[i] = i;
+      t.resetPalette();
+      // loadCharset(1);
+      // t._cursor.animate = 1;
+      // actors
+      t._vm.numNestedScripts = 0;
+      // verbs
+      // camera triggers
+      // camera._follows = 0;
+      t._virtscreens[0].xstart = 0;
+      t._currentScript - 0xFF;
+      t._currentRoom = 0;
+      t._numObjectsInRoom = 0;
+      t._actorToPrintStrFor = 0;
+      t._fullRedraw = true;
+
+      t.clearDrawObjectQueue();
     }
   };
 }());

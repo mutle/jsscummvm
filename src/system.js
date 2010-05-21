@@ -28,7 +28,7 @@
         } else {
           $.ajax({type: "GET", url: game_url, dataType: "text", cache:false, success: function(data) {
             log(game_url + " loaded");
-            window.localStorage[game_url] = data;
+            if(navigator.vendor.match("Apple")) window.localStorage[game_url] = data;
             ScummVM.engine.setFile(file_no, filename, data);
             filesToLoad--;
             if(t.finishedLoading() && callback)

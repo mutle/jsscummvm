@@ -20,9 +20,16 @@
       stream = new ScummVM.Stream(this.buffer, this.filename);
       stream.offset = this.offset;
       stream.encByte = this.encByte;
-      stream.seek(offset);
+      if(offset)
+        stream.seek(offset);
       debug(7, "New relative Stream "+this.filename+" at offset "+stream.offset+" total size "+stream.length);
       return stream;
+    },
+    writeByteAt: function(pos, value) {
+      this.buffer[pos] = String.fromCharCode(value & this.encByte)
+    },
+    writeUI8: function(value) {
+      this.writeByteAt(t.offset++, value);
     },
     readByteAt: function(pos){
       return (this.buffer.charCodeAt(pos) & 0xff) ^ this.encByte;

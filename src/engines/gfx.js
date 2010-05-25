@@ -4,6 +4,19 @@
 
   var screens = ["main", "text", "verb", "unknown"];
 
+    function debugBitmap(bitmap, w, h) {
+      var i = 0, j = 0, out = "", bitmap = bitmap.newRelativeStream(0);
+      for(i=0; i < h; i++) {
+        var line = i+"  -> ";
+        for(j=0; j < w; j++) {
+          line += bitmap.readUI8() + " ";
+        }
+        out += line + "<br />";
+      }
+      log(out);
+    }
+
+
   s.VirtScreen = function(n) {
     this.number = n;
     this.name = screens[n];
@@ -18,7 +31,7 @@
     var t = this;
     t.engine = engine;
     t.paletteMod = 0;
-    t.roomPalette = [];
+    t.roomPalette = engine._roomPalette;
     t.numStrips = 0;
     t.transparentColor = 255;
     t.decomp_shr = 0;
@@ -34,9 +47,10 @@
       var vm = t.engine, dst, limit, numstrip, sx;
       var smap_ptr = vm.findResource(_system.MKID_BE("SMAP"), src);
 
-      log("drawing bitmap "+x+" "+y+" "+width+" "+height);
+      // log("drawing bitmap "+x+" "+y+" "+width+" "+height);
       // getZplanes
       // t.prepareDrawBitmap(src, vs, x, y, width, height, stripnr, numstrip);
+      t.vertStripNextInc = height * vs.pitch - 1;
 
       sx = x - vs.xstart / 8;
       if(sx < 0) {
@@ -45,42 +59,56 @@
         stripnr += -sx;
         sx = 0;
       }
-      log(numstrip);
 
       limit = Math.max(vm._roomWidth, vs.w) / 8 - x;
       if(limit > numstrip)
         limit = numstrip;
       if(limit > t.numStrips - sx)
         limit = t.numstrips - sx;
-      log(limit);
+
       for(k = 0; k < limit; ++k, ++stripnr, ++sx, ++x) {
-        log("k "+k+" stripnr "+stripnr);
+        var offset = y * vs.pitch + (x * 8);
         // adjust vs dirty
         if(vs.number == 0) {
-          dst = vs.backBuf.newRelativeStream(y * vs.pitch + (x * 8));
+          dst = vs.backBuf.newRelativeStream(offset);
         } else {
-          dst = vs.pixels.newRelativeStream(y * vs.pitch + (x * 8))
+          dst = vs.pixels.newRelativeStream(offet)
         }
         transpStrip = t.drawStrip(dst, vs, x, y, width, height, stripnr, smap_ptr);
 
         // decodeMask(x, y, width, height, stripnr, numzbuf, zplane_list, transpStrip, flag, tmsk_ptr);
 
         if(vs.number == 0) {
-          // frontBuf
+          // render frontBuf
+          // dst.seek(offset, true);
+          // var frontBuf = vs.pixels.newRelativeStream(offset);
+          // t.copy8Col(frontBuf, vs.pitch, dst, height, 1);
         }
+      }
+      if(t.engine._debug) {
+        var stream = vs.backBuf.newRelativeStream(0);
+        for(var n = 0; n < 6; n++) {
+          var i = 0;
+          for(var i = 0; i < 255; i++)
+            stream.writeUI8(i % 255);
+          stream.seek(320 - i);
+        }
+        debugBitmap(vs.backBuf, width, height);
       }
     };
 
+    var curStrip = 0;
+
     t.drawStrip = function(dst, vs, x, y, width, height, stripnr, smap_ptr) {
-      var offset = -1, smapLen, headerOffset = smap_ptr.offset;
+      var offset = -1, smapLen, headerOffset = smap_ptr.offset, smap = smap_ptr.newRelativeStream(-headerOffset);
 
-      log("drawStrip "+stripnr);
-
-      smapLen = smap_ptr.readUI32(true);
+      curStrip = stripnr;
+      smap.readUI32(true);
+      smapLen = smap.readUI32(true);
       if(stripnr * 4 + 8 < smapLen)
-        offset = smap_ptr.seek(stripnr * 4 + 8, true);
-      smap_ptr.seek(headerOffset + offset, true);
-      return t.decompressBitmap(dst, vs.pitch, smap_ptr, height);
+        offset = smap.seek(stripnr * 4 + 8, true).readUI32();
+      smap.seek(offset, true);
+      return t.decompressBitmap(dst, vs.pitch, smap, height);
     };
 
     t.decompressBitmap = function(dst, dstPitch, src, numLinesToProcess) {
@@ -92,9 +120,36 @@
       switch(code) {
         case 1:
           t.drawStripRaw(dst, dstPitch, src, numLinesToProcess, false);
+          debug(5, "drawing strip "+curStrip+" (x offset "+(curStrip*8)+") raw");
+        break;
+        case 14:
+        case 15:
+        case 16:
+        case 17:
+        case 18:
+          t.drawStripBasicV(dst, dstPitch, src, numLinesToProcess, false);
+          debug(5, "drawing strip "+curStrip+" (x offset "+(curStrip*8)+") basic V");
+        break;
+        case 27:
+        case 28:
+          t.drawStripBasicH(dst, dstPitch, src, numLinesToProcess, false);
+          debug(5, "drawing strip "+curStrip+" (x offset "+(curStrip*8)+") basic H");
+        break;
+        case 64:
+        case 65:
+        case 66:
+        case 67:
+        case 68:
+        case 104:
+        case 105:
+        case 106:
+        case 107:
+        case 108:
+          t.drawStripComplex(dst, dstPitch, src, numLinesToProcess, false);
+          debug(5, "drawing strip "+curStrip+" (x offset "+(curStrip*8)+") complex");
         break;
         default:
-          log("unknown decompressBitmap code "+code);
+          debug(5, "unknown decompressBitmap code "+code);
         break;
       }
 
@@ -107,16 +162,215 @@
           dst.seek(x);
           if(!transpCheck || color != t.transparentColor)
             t.writeRoomColor(dst, color);
+          else
+            dst.seek(1);
         }
         dst.seek(dstPitch);
       } while(--height);
     };
 
     t.writeRoomColor = function(dst, color) {
-      dst.writeUI8(color);
+      c = this.roomPalette[(color + this.paletteMod) & 0xFF];
+      dst.writeUI8(c);
     };
-  };
 
+
+    t.drawStripComplex = function(dst, dstPitch, src, height, transpCheck) {
+      var t = this, color = src.readUI8(), bits = src.readUI8(), cl = 8, bit, incm, reps;
+      var x = 8;
+      // return;
+
+      var READ_BIT = function() {
+        cl--; bit = bits & 1; bits >>= 1; return bit;
+      }, FILL_BITS = function(n) {
+        if(cl <= 8) {
+          bits |= (src.readUI8() << cl);
+          cl += 8;
+        }
+      };
+
+      var againPos = function() {
+        if(!READ_BIT()) {
+        } else if(!READ_BIT()) {
+          FILL_BITS();
+          color = bits & t.decomp_mask;
+          bits >>= t.decomp_shr;
+          cl -= t.decomp_shr;
+        } else {
+          incm = (bits & 7) - 4;
+          cl -= 3;
+          bits >>= 3;
+          if(incm) {
+            color += incm;
+          } else {
+            FILL_BITS();
+            reps = bits & 0xFF;
+            do {
+              if(!--x) {
+                x = 8;
+                height--;
+                if(height <= 1)
+                  return;
+                dst.seek(dstPitch - 8);
+              }
+              if(!t.transpCheck || color != t.transparentColor)
+                t.writeRoomColor(dst, color);
+              else
+                dst.seek(1);
+            } while(--reps);
+            bits >>= 8;
+            bits |= src.readUI8() << (cl - 8);
+            againPos();
+          }
+        }
+      };
+      do {
+        x = 8;
+        do {
+          FILL_BITS();
+          if(!t.transpCheck || color != t.transparentColor)
+            t.writeRoomColor(dst, color);
+          else
+            dst.seek(1);
+          againPos();
+        } while(--x);
+        if(height > 1)
+          dst.seek(dstPitch - 8);
+        if(height <= 1) return;
+      } while(--height);
+
+    };
+
+    t.drawStripBasicH = function(dst, dstPitch, src, height, transpCheck) {
+      var t = this, color = src.readUI8(), bits = src.readUI8(), cl = 8, bit, inc = -1;
+
+      var READ_BIT = function() {
+        cl--; bit = bits & 1; bits >>= 1; return bit;
+      }, FILL_BITS = function(n) {
+        if(cl <= 8) {
+          bits |= (src.readUI8() << cl);
+          cl += 8;
+        }
+      };
+
+      do {
+        var x = 8;
+        do {
+          FILL_BITS();
+          if(!t.transpCheck || color != t.transparentColor)
+            t.writeRoomColor(dst, color);
+          else
+            dst.seek(1);
+          if(!READ_BIT()) {
+          } else if(!READ_BIT()) {
+            FILL_BITS();
+            color = bits & t.decomp_mask;
+            bits >>= t.decomp_shr;
+            cl -= t.decomp_shr;
+            inc = -1;
+          } else if(!READ_BIT()) {
+            color += inc;
+          } else {
+            inc = -inc;
+            color += inc;
+          }
+        } while(--x);
+        if(height > 1)
+          dst.seek(dstPitch - 8);
+      } while(--height);
+    };
+
+    t.drawStripBasicV = function(dst, dstPitch, src, height, transpCheck) {
+      var t = this, color = src.readUI8(), bits = src.readUI8(), cl = 8, bit, inc = -1;
+
+      var READ_BIT = function() {
+        cl--; bit = bits & 1; bits >>= 1; return bit;
+      }, FILL_BITS = function(n) {
+        if(cl <= 8) {
+          bits |= (src.readUI8() << cl);
+          cl += 8;
+        }
+      };
+
+      var x = 8;
+      do {
+        var h = height;
+        do {
+          FILL_BITS();
+          if(h == 1) continue;
+          if(!t.transpCheck || color != t.transparentColor)
+            t.writeRoomColor(dst, color);
+          else
+            dst.seek(1);
+          dst.seek(dstPitch-1);
+          if(!READ_BIT()) {
+          } else if(!READ_BIT()) {
+            FILL_BITS();
+            color = bits & t.decomp_mask;
+            bits >>= t.decomp_shr;
+            cl -= t.decomp_shr;
+            inc = -1;
+          } else if(!READ_BIT()) {
+            color += inc;
+          } else {
+            inc = -inc;
+            color += inc;
+          }
+        } while(--h);
+        dst.seek(-t.vertStripNextInc);
+      } while(--x);
+    };
+    t.drawStripBasicH = function(dst, dstPitch, src, height, transpCheck) {
+      var t = this, color = src.readUI8(), bits = src.readUI8(), cl = 8, bit, inc = -1;
+
+      var READ_BIT = function() {
+        cl--; bit = bits & 1; bits >>= 1; return bit;
+      }, FILL_BITS = function(n) {
+        if(cl <= 8) {
+          bits |= (src.readUI8() << cl);
+          cl += 8;
+        }
+      };
+
+      do {
+        var x = 8;
+        do {
+          FILL_BITS();
+          if(!t.transpCheck || color != t.transparentColor)
+            t.writeRoomColor(dst, color);
+          if(!READ_BIT()) {
+          } else if(!READ_BIT()) {
+            FILL_BITS();
+            color = bits & t.decomp_mask;
+            bits >>= t.decomp_shr;
+            cl -= t.decomp_shr;
+            inc = -1;
+          } else if(!READ_BIT()) {
+            color += inc;
+          } else {
+            inc = -inc;
+            color += inc;
+          }
+        } while(--x);
+        if(height > 1)
+          dst.seek(dstPitch - 8);
+      } while(--height);
+    };
+
+    t.copy8Col = function(dst, dstPitch, src, height, bitDepth) {
+      var i = 0;
+      do {
+        for(i = 0; i < 8; i++) {
+          dst.writeUI8(src.readUI8());
+        }
+        if(height > 1) {
+          dst.seek(dstPitch);
+          src.seek(dstPitch);
+        }
+      } while(--height);
+    };
+
+  };
 
   s.initGraphics = function() {
     var t = this,
@@ -132,7 +386,6 @@
     var t = this, i, adj = 0,
         width = ScummVM.width, height = ScummVM.height;
     if(!t.getResourceAddress("buffer", 4)) {
-      log("unknown screen");
       t.initVirtScreen(3, 80, width, 13, false);
     }
 
@@ -161,20 +414,23 @@
 
     size = vs.pitch * vs.h;
     if(scrollable) {
-      size += vs.puich * 4;
+      size += vs.pitch * 4;
     }
 
-    res.createResource("buffer", slot+1, size);
+    res.createResource("buffer", slot+1, size, -1);
     vs.pixels = t.getResourceAddress("buffer", slot+1);
     // reset pixels to 0
     if(slot == 0) {
-      vs.backBuf = res.createResource("buffer", slot + 5, size);
+      vs.backBuf = res.createResource("buffer", slot + 5, size, -1);
     }
   };
 
   s.drawDirtyScreenParts = function() {
     var t = this,
         ctx = ScummVM.context, width = ScummVM.width, height = ScummVM.height;
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(0,0,width,height);
 
     t.updateDirtyScreen(2); // Verb
 
@@ -198,31 +454,32 @@
 
     if(bottom <= top || top >= vs.h) return;
     if(width > vs.w - x) width = vs.w - x;
+    if(top < 0) top = 0;
+    if(bottom > t._screenHeight) bottom = t._screenHeight;
 
     y = vs.topline + top;
     height = bottom - top;
 
     if(width <= 0 || height <= 0) return;
 
-    log("drawing strip ("+x+"/"+y+") ("+(x+width)+"/"+(y+height)+")");
-    src = vs.pixels;
+    // log("drawing strip to screen ("+x+"/"+y+") ("+(x+width)+"/"+(y+height)+")");
+    src = (vs.number == 0 ? vs.backBuf : vs.pixels).newRelativeStream(0);
     dst = ctx.getImageData(x, y, width, height);
     var vsPitch = vs.pitch - width, pitch = vs.pitch, h, w;
 
     i = 0;
-    for(h = height; h > 0; --h) {
-      for(w = width; w > 0; w--) {
+    for(h = 0; h < height; h++) {
+      for(w = 0; w < width; w++) {
         palcolor = src.readUI8();
         color = pal[palcolor];
         if(color) {
-          i++;
           dst.data[i * 4] = color[0];
           dst.data[i * 4 + 1] = color[1];
           dst.data[i * 4 + 2] = color[2];
         }
+        i++;
       }
     }
-    log("found "+i+" pixels");
     ctx.putImageData(dst, x, top);
   };
 
@@ -255,10 +512,13 @@
 
   s.redrawBGAreas = function() {
     var t = this;
-    log("redrawing BG Areas");
     t._bgNeedsRedraw = false;
-    log("strips "+t._gdi.numStrips);
     t.redrawBGStrip(0, t._gdi.numStrips);
   };
+
+  s.initBGBuffers = function() {
+    var t = this, room, ptr;
+    room = t.getResourceAddress("room", t._roomResource);
+  }
 
 }());

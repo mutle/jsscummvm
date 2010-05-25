@@ -60,7 +60,9 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _gfx: {ENCD: 0, EXCD:0, EPAL:0, CLUT:0, PALS:0},
     _drawObjectQue: [],
     _debugMode: 0,
+    _debug: false,
     _screenStartStrip: 0,
+    _localScriptOffsets: [],
     init: function(game) {
       this._game = game;
       this.initGraphics();
@@ -80,6 +82,8 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     launch: function() {
       var t = this;
       if(t._files.length > 1) {
+        var diff = 0;
+
         log("All files loaded");
         t._file = t.indexFile();
         t._engineStartTime = _system.getMillis() / 1000;
@@ -92,11 +96,37 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
         t.runBootscript();
 
         log("booted");
-        t._timer = window.setInterval(t.loop, 1000);
+        t._timer = window.setInterval(function() {
+          t.scummVar("timer", Math.floor(diff * 60 / 1000));
+          t.scummVar("timer_total", t.scummVar("timer_total") + Math.floor(diff * 60 / 1000));
+          var delta = t.scummVar("timer_next");
+          if(delta < 1)
+            delta = 1;
+
+          t.waitForTimer(Math.floor(delta * 1000 / 60) - diff, function() {
+            diff = _system.getMillis();
+            t.loop(delta);
+            diff = _system.getMillis() - diff;
+          });
+
+
+        }, 1000 / 30);
       }
     },
-    loop: function() {
+    waitForTimer: function(ticks, callback) {
+      window.setTimeout(callback, ticks);
+    },
+    loop: function(delta) {
       var t = ScummVM.engines.SCUMM;
+
+      t.scummVar("tmr_1", t.scummVar("tmr_1") + delta);
+      t.scummVar("tmr_2", t.scummVar("tmr_2") + delta);
+      t.scummVar("tmr_3", t.scummVar("tmr_3") + delta);
+
+      if(delta > 15)
+        delta = 15;
+
+      t.decreaseScriptDelay(delta);
 
       // this.processInput();
       // Do SCUMM stuff
@@ -129,7 +159,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
         t.drawDirtyScreenParts();
       }
 
-      t._shouldQuit = true;
+      // t._shouldQuit = true;
     },
     shouldQuit: function() {
       var t = ScummVM.engines.SCUMM;

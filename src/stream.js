@@ -9,6 +9,20 @@
     this.offset = 0;
     this.encByte = 0;
   };
+  ScummVM.WritableStream = function(data, size) {
+    this.filename = "";
+    if(typeof data == "string")
+      this.buffer = data.split("");
+    else
+      this.buffer = data;
+
+    if(filename == "")
+      this.length = size || 0;
+    else
+      this.length = this.buffer.length;
+    this.offset = 0;
+    this.encByte = 0;
+  };
   ScummVM.Stream.prototype = {
     newStream: function(offset, size) {
       stream = new ScummVM.Stream(this.buffer.substring(offset, offset+size), this.filename);
@@ -17,19 +31,13 @@
       return stream;
     },
     newRelativeStream: function(offset) {
-      stream = new ScummVM.Stream(this.buffer, this.filename);
+      stream = new ScummVM.Stream(this.buffer, this.filename, this.length);
       stream.offset = this.offset;
       stream.encByte = this.encByte;
       if(offset)
         stream.seek(offset);
       debug(7, "New relative Stream "+this.filename+" at offset "+stream.offset+" total size "+stream.length);
       return stream;
-    },
-    writeByteAt: function(pos, value) {
-      this.buffer[pos] = String.fromCharCode(value & this.encByte)
-    },
-    writeUI8: function(value) {
-      this.writeByteAt(t.offset++, value);
     },
     readByteAt: function(pos){
       return (this.buffer.charCodeAt(pos) & 0xff) ^ this.encByte;
@@ -110,6 +118,37 @@
       this.seek(0, true);
     }
 
+  };
+  ScummVM.WritableStream.prototype = {
+    newRelativeStream: function(offset) {
+      stream = new ScummVM.WritableStream(this.buffer, this.length);
+      stream.offset = this.offset;
+      stream.encByte = this.encByte;
+      if(offset)
+        stream.seek(offset);
+      debug(7, "New relative Stream "+this.filename+" at offset "+stream.offset+" total size "+stream.length);
+      return stream;
+    },
+    writeByteAt: function(pos, value) {
+      this.buffer[pos] = String.fromCharCode(value & 0xFF);
+    },
+    writeUI8: function(value) {
+      this.writeByteAt(this.offset, value);
+      this.offset++;
+    },
+    readUI8: function() {
+      val = this.buffer[this.offset++];
+      return val ? val.charCodeAt(0) : 0;
+    },
+    toStr: function() {
+      return this.buffer.join("");
+    },
+    seek: function(offset, absolute){
+      this.offset = (absolute ? 0 : this.offset) + offset;
+      if(this.offset > this.length)
+        log("jumped too far");
+      return this;
+    },
   };
 
 }());

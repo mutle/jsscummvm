@@ -40,7 +40,7 @@
         for(i = 0; i < size; i ++) {
           buf += String.fromCharCode(0);
         }
-        stream = new ScummVM.Stream(buf, "", size);
+        stream = new ScummVM.WritableStream(buf, size);
       } else {
         if(source) file = source;
 
@@ -365,6 +365,7 @@
   s.getResourceRoomNr = function(type, idx) {
     var t = this,
         res = t._res.types[type];
+    if(type == "room") return idx;
     return res.roomno[idx];
   }
   s.getResourceAddress = function(type, idx) {
@@ -404,12 +405,12 @@
 
     roomNr = t.getResourceRoomNr(type, idx);
     if(idx >= res.num) {
-      error("resource undfined, index out of bounds");
+      error("resource undefined, index out of bounds");
     }
     if(roomNr == 0)
       roomNr = t._roomResource;
 
-    debug(5, "loading resource "+type+" "+idx+" in room "+roomNr);
+    window.console.log("loading resource "+type+" "+idx+" in room "+roomNr);
 
     if(type == "room") {
       fileOffs = 0;
@@ -463,7 +464,6 @@
     while(curpos < totalsize) {
       t = searchin.readUI32(true)
       if(t == tag) {
-        log("found tag "+_system.reverse_MKID(tag));
         t._resourceLastSearchBuf = searchin;
         size = searchin.readUI32(true);
         searchin.seek(-8);
@@ -487,7 +487,11 @@
   };
 
   s.getResourceDataSize = function(stream) {
-    var t = this, size = stream.readUI32(true) - t._resourceHeaderSize;
+    var t = this, size, old_offset = stream.offset;
+
+    stream.seek(4, true);
+    size = stream.readUI32(true) - t._resourceHeaderSize;
+    stream.seek(old_offset, true);
     return size;
   };
 

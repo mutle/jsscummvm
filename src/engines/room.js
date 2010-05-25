@@ -26,13 +26,20 @@
       }
     }
 
+    t.scummVar("new_room", room);
+
     t.runExitScript();
     // killScriptsAndResources
     t.clearDrawQueues();
     // hideActors
+    t.scummVar("room", room);
     t._fullRedraw = true;
     t._currentRoom = room;
     t._roomResource = room;
+    t.scummVar("room_resource", t._roomResource);
+
+    if(room != 0)
+      t.ensureResourceLoaded("room", room);
     // clearRoomObjects
 
     if(t._currentRoom == 0)
@@ -40,7 +47,8 @@
 
     t.setupRoomSubBlocks();
     t.resetRoomSubBlocks();
-    // initBGBuffers(t._roomHeight)
+    // t.initBGBuffers(t._roomHeight)
+    // resetRoomObjects
     // setCamera
     if(t._roomResource == 0)
       return;
@@ -50,7 +58,7 @@
   };
 
   s.setupRoomSubBlocks = function() {
-    var t = this, i, roomptr, rmhd, ptr, rmim,
+    var t = this, i, roomptr, rmhd, ptr, rmim, searchptr,
         MKID_BE = _system.MKID_BE;
 
     t._gfx = {ENCD: 0, EXCD:0, EPAL:0, CLUT:0, PALS:0};
@@ -69,9 +77,15 @@
     log(rmim.offset);
     t._gfx["IM00"] = t.findResource(MKID_BE("IM00"), rmim);
 
-    // exit script
-    // entry script
+    ptr = t.findResource(MKID_BE("EXCD"), roomptr);
+    if(ptr) t._gfx["EXCD"] = ptr;
+
+    ptr = t.findResource(MKID_BE("ENCD"), roomptr);
+    if(ptr) t._gfx["ENCD"] = ptr;
+
     // local scripts
+    searchptr = roomptr.newRelativeStream(0);
+
 
     ptr = t.findResourceData(MKID_BE("CLUT"), roomptr);
     if(ptr) t._gfx["CLUT"] = ptr;

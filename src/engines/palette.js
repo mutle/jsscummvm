@@ -35,13 +35,11 @@
     if(!numcolor || numcolor < 0) {
       numcolor = t.getResourceDataSize(ptr) / 3;
     }
-    log(numcolor+" colors in palette");
 
     dest = t._currentPalette;
     for(i = firstIndex; i < numcolor; i++) {
       r = ptr.readUI8(); g = ptr.readUI8(); b = ptr.readUI8();
       t._currentPalette[i] = [r,g,b];
-      log(i+" #"+r.toString(16)+g.toString(16)+b.toString(16));
     }
   };
 

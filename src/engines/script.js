@@ -439,9 +439,11 @@
 
   s.getObjectIndex = function(obj) {
     var t = this, i;
+    log("getObjectIndex "+obj);
     if(obj < 1)
       return -1;
-    for(i = t._nums['local_objects']; i > 0; i--) {
+    for(i = t._objs.length; i > 0; i--) {
+      if(t._objs[i] && t._objs[i].obj_nr > 0) window.console.log(t._objs[i]);
       if(t._objs[i] && t._objs[i].obj_nr == obj)
         return i;
     }
@@ -451,10 +453,12 @@
   s.getState = function(obj) {
     var t = this;
     return t._objectStateTable[obj];
+    log("image state "+state);
   };
 
   s.putState = function(obj, state) {
     var t = this;
+      log("put State "+obj+" "+state);
     t._objectStateTable[obj] = state;
   };
 
@@ -1028,11 +1032,14 @@
       }
       s.addObjectToDrawQueue(idx);
 
+      x = od.x_pos; y = od.y_pos; w = od.width; h = od.height;
+
       i = s._objs.length - 1;
       do {
         o = s._objs[i];
-        if(o && o.obj_nr && o.x_pos == x && o.y_pos == y && o.width == w && o.height == h)
+        if(o && o.obj_nr && o.x_pos == x && o.y_pos == y && o.width == w && o.height == h) {
           s.putState(o.obj_nr, 0);
+        }
       } while(--i);
       s.putState(obj, state);
     },
@@ -1166,6 +1173,7 @@
     },
     setCameraAt: function() {
       s.getVarOrDirectWord(PARAM_1);
+      s._screenEndStrip = s._gdi.numStrips - 1;
       // set camera
     },
     startSound: function() {

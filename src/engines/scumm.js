@@ -62,7 +62,9 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _debugMode: 0,
     _debug: false,
     _screenStartStrip: 0,
+    _screenEndStrip: 0,
     _localScriptOffsets: [],
+    _skipDrawObject: false,
     init: function(game) {
       this._game = game;
       this.initGraphics();
@@ -150,6 +152,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
         // Actors, Camera, Objects
         if(t._bgNeedsRedraw || t._fullRedraw)
           t.redrawBGAreas();
+        t.processDrawQueue();
 
         if(t.scummVar("main_script")) {
           t.runScript(t.scummVar("main_script"), 0, 0, 0);
@@ -159,7 +162,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
         t.drawDirtyScreenParts();
       }
 
-      // t._shouldQuit = true;
+      t._shouldQuit = true;
     },
     shouldQuit: function() {
       var t = ScummVM.engines.SCUMM;

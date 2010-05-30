@@ -30,6 +30,13 @@
       debug(7, "New Stream "+this.filename+" at offset "+offset+" total size "+this.length+" stream size "+stream.length);
       return stream;
     },
+    newAbsoluteStream: function(offset) {
+      stream = new ScummVM.Stream(this.buffer, this.filename, this.length);
+      stream.offset = offset;
+      stream.encByte = this.encByte;
+      debug(7, "New absolute Stream "+this.filename+" at offset "+stream.offset+" total size "+stream.length);
+      return stream;
+    },
     newRelativeStream: function(offset) {
       stream = new ScummVM.Stream(this.buffer, this.filename, this.length);
       stream.offset = this.offset;
@@ -105,9 +112,9 @@
       str = chars.join('');
       return str;
     },
-    seek: function(offset, absolute){
+    seek: function(offset, absolute, ignoreWarnings){
       this.offset = (absolute ? 0 : this.offset) + offset;
-      if(this.offset > this.length)
+      if(this.offset > this.length && !ignoreWarnings)
         log("jumped too far");
       return this;
     },
@@ -116,7 +123,23 @@
     },
     reset: function() {
       this.seek(0, true);
-    }
+      return this;
+    },
+    findNext: function(tag) {
+      var t = this, oldoff = t.offset, rtag;
+      while((rtag = t.readUI32(true)) != tag) {
+        if(t.offset >= t.length) {
+          t.seek(oldoff, true); return false;
+        }
+        size = t.readUI32(true);
+        if(size == 0) {
+          t.seek(oldoff, true); return false;
+        }
+        t.offset += size - 8;
+      }
+      t.seek(4);
+      return true;
+    },
 
   };
   ScummVM.WritableStream.prototype = {
@@ -143,12 +166,16 @@
     toStr: function() {
       return this.buffer.join("");
     },
-    seek: function(offset, absolute){
+    seek: function(offset, absolute, ignoreWarnings){
       this.offset = (absolute ? 0 : this.offset) + offset;
-      if(this.offset > this.length)
+      if(this.offset > this.length && !ignoreWarnings)
         log("jumped too far");
       return this;
     },
+    reset: function() {
+      this.seek(0, true);
+      return this;
+    }
   };
 
 }());

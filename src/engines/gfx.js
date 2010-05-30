@@ -3,6 +3,8 @@
       s = ScummVM.engines.SCUMM;
 
   var screens = ["main", "text", "verb", "unknown"];
+  var MKID_BE = ScummVM.system.MKID_BE;
+  var IMxx_tags = [ MKID_BE('IM00'), MKID_BE('IM01'), MKID_BE('IM02'), MKID_BE('IM03'), MKID_BE('IM04'), MKID_BE('IM05'), MKID_BE('IM06'), MKID_BE('IM07'), MKID_BE('IM08'), MKID_BE('IM09'), MKID_BE('IM0A'), MKID_BE('IM0B'), MKID_BE('IM0C'), MKID_BE('IM0D'), MKID_BE('IM0E'), MKID_BE('IM0F'), MKID_BE('IM10') ];
 
     function debugBitmap(bitmap, w, h) {
       var i = 0, j = 0, out = "", bitmap = bitmap.newRelativeStream(0);
@@ -42,15 +44,20 @@
     t.numZBuffer = 0;
     t.imgBufOffs = [0, 0, 0, 0, 0, 0, 0, 0];
     t.numStrips = engine._screenWidth / 8;
+    
+    t.dbAllowMaskOr = 1 << 0;
+    t.dbDrawMaskOnAll = 1 << 1;
+    t.dbObjectMode = 2 << 2;
 
     t.drawBitmap = function(src, vs, x, y, width, height, stripnr, numstrip, flag) {
       var vm = t.engine, dst, limit, numstrip, sx;
-      var smap_ptr = vm.findResource(_system.MKID_BE("SMAP"), src);
+      var smap_ptr = vm.findResource(_system.MKID_BE("SMAP"), src), tmsk_ptr = vm.findResource(_system.MKID_BE("TMSK"), src), numzbuf = 0, zplane_list = [];
 
-      // log("drawing bitmap "+x+" "+y+" "+width+" "+height);
+      log("drawing bitmap "+x+" "+y+" "+width+" "+height);
       // getZplanes
-      // t.prepareDrawBitmap(src, vs, x, y, width, height, stripnr, numstrip);
+
       t.vertStripNextInc = height * vs.pitch - 1;
+      t.objectMode = (flag & t.dbObjectMode) == t.dbObjectMode;
 
       sx = x - vs.xstart / 8;
       if(sx < 0) {
@@ -72,19 +79,20 @@
         if(vs.number == 0) {
           dst = vs.backBuf.newRelativeStream(offset);
         } else {
-          dst = vs.pixels.newRelativeStream(offet)
+          dst = vs.pixels.newRelativeStream(offset);
         }
         transpStrip = t.drawStrip(dst, vs, x, y, width, height, stripnr, smap_ptr);
 
-        // decodeMask(x, y, width, height, stripnr, numzbuf, zplane_list, transpStrip, flag, tmsk_ptr);
-
         if(vs.number == 0) {
-          // render frontBuf
-          // dst.seek(offset, true);
-          // var frontBuf = vs.pixels.newRelativeStream(offset);
-          // t.copy8Col(frontBuf, vs.pitch, dst, height, 1);
+          dst = vs.backBuf.newRelativeStream(offset);
+          var frontBuf = vs.pixels.newRelativeStream(offset);
+          t.copy8Col(frontBuf, vs.pitch, dst, height, 1);
+          var frontBuf = vs.pixels.newRelativeStream(offset);
         }
+
+        t.decodeMask(x, y, width, height, stripnr, numzbuf, zplane_list, transpStrip, flag, tmsk_ptr);
       }
+      // debugBitmap(vs.pixels, 320, 200);
       if(t.engine._debug) {
         var stream = vs.backBuf.newRelativeStream(0);
         for(var n = 0; n < 6; n++) {
@@ -107,8 +115,46 @@
       smapLen = smap.readUI32(true);
       if(stripnr * 4 + 8 < smapLen)
         offset = smap.seek(stripnr * 4 + 8, true).readUI32();
-      smap.seek(offset, true);
+      smap.offset = offset;
+      log("drawing Strip "+stripnr+" "+x+" from offset "+offset+" "+smap.offset);
       return t.decompressBitmap(dst, vs.pitch, smap, height);
+    };
+
+    t.decodeMask = function(x, y, width, heigh, stripnr, numzbuf, zplane_list, transpStrip, flag, tmsk_ptr) {
+      var t = this, i, mask_ptr, z_plane_ptr;
+
+      if(flag & t.dbDrawMaskOnAll) {
+        log("draw all");
+      } else {
+        log("decoding mask "+numzbuf);
+        for(i = 1; i < numzbuf; i++) {
+          var offs, zplane;
+
+          if(!zplane_list[i])
+            continue;
+
+          zplane = zplane_list[i].newRelativeStream(stripnr * 2 + 8);
+          offs = zplane.readUI16();
+
+          mask_ptr = t.getMaskBuffer(x, y, i);
+
+          if(offs) {
+            z_plane_ptr = zplane_list[i].newRelativeStream(offs);
+            if(tmsk_ptr) {
+              var tmsk = tmsk_ptr.seek(8).readUI16();
+              t.decompressTMSK(mask_ptr, tmsk, z_plane_ptr, height);
+            } else if(transpStrip && (flag & t.dbAllowMaskOr)) {
+              t.decompressMaskImgOr(mask_ptr, z_plane_ptr, height);
+            } else {
+              t.decompressMaskImg(mask_ptr, z_plane_ptr, height);
+            }
+          } else {
+            if(!(transpStrip && (flag & t.dbAllowMaskOr)))
+              for(var h = 0; h < height; h++)
+                mask_ptr.seek(h * t._nums['strips']).writeUI8(0);
+          }
+        }
+      }
     };
 
     t.decompressBitmap = function(dst, dstPitch, src, numLinesToProcess) {
@@ -152,7 +198,7 @@
           debug(5, "unknown decompressBitmap code "+code);
         break;
       }
-
+      return transpStrip;
     };
 
     t.drawStripRaw = function(dst, dstPitch, src, height, transpCheck) {
@@ -297,12 +343,9 @@
         var h = height;
         do {
           FILL_BITS();
-          if(h == 1) continue;
           if(!t.transpCheck || color != t.transparentColor)
             t.writeRoomColor(dst, color);
-          else
-            dst.seek(1);
-          dst.seek(dstPitch-1);
+          dst.seek(dstPitch-1, false, true);
           if(!READ_BIT()) {
           } else if(!READ_BIT()) {
             FILL_BITS();
@@ -317,7 +360,7 @@
             color += inc;
           }
         } while(--h);
-        dst.seek(-t.vertStripNextInc);
+        dst.seek(-t.vertStripNextInc, false, true);
       } while(--x);
     };
     t.drawStripBasicH = function(dst, dstPitch, src, height, transpCheck) {
@@ -359,15 +402,21 @@
 
     t.copy8Col = function(dst, dstPitch, src, height, bitDepth) {
       var i = 0;
+      var s = "", c;
       do {
+        var l = "";
         for(i = 0; i < 8; i++) {
-          dst.writeUI8(src.readUI8());
+          c = src.readUI8();
+          dst.writeUI8(c);
+          l += c+" ";
         }
         if(height > 1) {
-          dst.seek(dstPitch);
-          src.seek(dstPitch);
+          dst.seek(dstPitch-8);
+          src.seek(dstPitch-8);
         }
+        s += l + "\n";
       } while(--height);
+      // window.console.log(s);
     };
 
   };
@@ -419,7 +468,6 @@
 
     res.createResource("buffer", slot+1, size, -1);
     vs.pixels = t.getResourceAddress("buffer", slot+1);
-    // reset pixels to 0
     if(slot == 0) {
       vs.backBuf = res.createResource("buffer", slot + 5, size, -1);
     }
@@ -463,7 +511,8 @@
     if(width <= 0 || height <= 0) return;
 
     // log("drawing strip to screen ("+x+"/"+y+") ("+(x+width)+"/"+(y+height)+")");
-    src = (vs.number == 0 ? vs.backBuf : vs.pixels).newRelativeStream(0);
+    src = vs.pixels.newRelativeStream(0);
+    // src = (vs.number == 0 ? vs.backBuf : vs.pixels).newRelativeStream(0);
     dst = ctx.getImageData(x, y, width, height);
     var vsPitch = vs.pitch - width, pitch = vs.pitch, h, w;
 
@@ -483,14 +532,95 @@
     ctx.putImageData(dst, x, top);
   };
 
+  s.addObjectToDrawQueue = function(obj) {
+    var t = this;
+    t._drawObjectQue.push(obj);
+  };
+
   s.clearDrawObjectQueue = function() {
     var t = this;
+    log("clearing draw queue");
     t._drawObjectQue = new Array();
   };
 
   s.clearDrawQueues = function() {
     this.clearDrawObjectQueue();
+  };
+
+  s.processDrawQueue = function() {
+    var t = this, i, j;
+    log("processing draw queue");
+    window.console.log(t._drawObjectQue);
+    for(i = 0; i < t._drawObjectQue.length; i++) {
+      log("draw queue "+i);
+      j = t._drawObjectQue[i];
+      if(j) t.drawObject(j, 0);
+    }
+    t.clearDrawObjectQueue();
+  };
+
+  s.drawObject = function(obj, arg) {
+    if(this._skipDrawObject) return;
+    var t = this, od = t._objs[obj], height, width, ptr, x, a, numstrip, tmp;
+
+    if(t._bgNeedsRedraw) arg = 0;
+    if(od.obj_nr == 0) return;
+
+    log("drawing object "+obj);
+
+    var xpos = od.x_pos / 8,
+        ypos = od.y_pos;
+
+    width = od.width / 8;
+    height = od.height &= 0xFFFFFFF8;
+
+    log("check on screen "+od.x_pos+"/"+od.y_pos+" "+od.width+"x"+od.height);
+    window.console.log(width);
+    if(width == 0 || xpos > t._screenEndStrip || xpos + width < s._screenStartStrip)
+      return;
+
+    window.console.log(od);
+    ptr = t.getObjectImage(t.getOBIMFromObjectData(od), t.getState(od.obj_nr));
+    if(!ptr) return;
+
+    x = 0xFFFF;
+    for(a = numstrip = 0; a < width; a++) {
+      tmp = xpos + a;
+      if(tmp < t._screenStartStrip || t._screenEndStrip < tmp)
+        continue;
+      if(arg > 0 && t._screenStartStrip + arg <= tmp)
+        continue;
+      if(arg < 0 && tmp <= t._screenEndStrip + arg)
+        continue;
+      if(tmp < x)
+        x = tmp;
+      numstrip++;
+    }
+
+    if(numstrip != 0) {
+      var flags = od.flags | t._gdi.dbObjectMode;
+      t._gdi.drawBitmap(ptr, t._virtscreens[0], x, ypos, width * 8, height, x - xpos, numstrip, flags);
+    }
+  };
+
+  s.getObjectImage = function(ptr, state) {
+    var t = this;
+    log("image state "+state);
+    ptr = t.findResource(IMxx_tags[state], ptr);
+    return ptr;
   }
+
+  s.getOBIMFromObjectData = function(od) {
+    var t = this, ptr;
+    if(od.fl_object_index) {
+      ptr = t.getResourceAddress("fl_object", od.fl_object_index);
+      ptr = t.findResource(_system.MKID_BE("OBIM"), ptr);
+    } else {
+      ptr = t.getResourceAddress("room", t._roomResource);
+      ptr.seek(od.OBIMoffset);
+    }
+    return ptr;
+  };
 
   s.markObjectRectAsDirty = function(obj) {
     var t = this;

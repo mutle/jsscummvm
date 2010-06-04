@@ -93,7 +93,7 @@
   };
 
   s.setupRoomSubBlocks = function() {
-    var t = this, i, roomptr, rmhd, ptr, rmim, searchptr,
+    var t = this, i, roomptr, rmhd, ptr, rmim, searchptr, id,
         MKID_BE = _system.MKID_BE;
 
     t._gfx = {ENCD: 0, EXCD:0, EPAL:0, CLUT:0, PALS:0};
@@ -114,12 +114,23 @@
     ptr = t.findResource(MKID_BE("EXCD"), roomptr);
     if(ptr) t._gfx["EXCD"] = ptr;
 
-    ptr = t.findResource(MKID_BE("ENCD"), roomptr);
+    ptr = t.findResource(MKID_BE("ENCD"), roomptr, true);
     if(ptr) t._gfx["ENCD"] = ptr;
 
     // local scripts
-    searchptr = roomptr.newRelativeStream(0);
+    searchptr = roomptr.newRelativeStream(8);
+    log("loading local scripts");
+    while(searchptr.findNext(MKID_BE("LSCR"))) {
+      // searchptr.seek(8);
+      id = searchptr.readUI8();
+      searchptr.seek(-5);
+      var size = searchptr.readUI32(true);
+      t._localScriptOffsets[id - t._nums['global_scripts']] = searchptr.offset + 2;
+      log("local script id "+id+" offset 0x"+(t._localScriptOffsets[id - t._nums['global_scripts']]).toString(16));
+      searchptr.seek(size - 8);
+    }
 
+      window.console.log(t._localScriptOffsets);
 
     ptr = t.findResourceData(MKID_BE("CLUT"), roomptr);
     if(ptr) t._gfx["CLUT"] = ptr;
@@ -161,7 +172,7 @@
         obim_id = t.getObjectIdFromOBIM(searchptr);
         for(j = 1; j < t._nums['local_objects']; j++) {
           if(t._objs[j].obj_nr == obim_id) {
-            t._objs[i].OBIMoffset = searchptr.offset - 8;
+            t._objs[j].OBIMoffset = searchptr.offset - 8;
           }
         }
       } else

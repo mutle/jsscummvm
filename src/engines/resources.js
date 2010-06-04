@@ -454,18 +454,20 @@
     log(stream.readString(size));
   };
 
-  s.findResource = function(tag, source) {
+  s.findResource = function(tag, source, debug) {
     var t = this, curpos, totalsize, size, searchin;
 
     searchin = source.newRelativeStream(4);
     t._resourceLastSearchSize = totalsize = searchin.readUI32(true);
     curpos = 8;
 
+    if(debug) log("searching ENCD");
     while(curpos < totalsize) {
       t = searchin.readUI32(true)
       if(t == tag) {
         t._resourceLastSearchBuf = searchin;
         size = searchin.readUI32(true);
+          if(debug) log("offset ENCD "+searchin.offset.toString(16));
         searchin.seek(-8);
         return searchin.newStream(searchin.offset, size);
       }

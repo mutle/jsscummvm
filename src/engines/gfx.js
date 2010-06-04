@@ -50,7 +50,7 @@
     t.dbObjectMode = 2 << 2;
 
     t.drawBitmap = function(src, vs, x, y, width, height, stripnr, numstrip, flag) {
-      var vm = t.engine, dst, limit, numstrip, sx;
+      var vm = t.engine, dst, limit, numstrip, sx, frontBuf, transpStrip, offset;
       var smap_ptr = vm.findResource(_system.MKID_BE("SMAP"), src), tmsk_ptr = vm.findResource(_system.MKID_BE("TMSK"), src), numzbuf = 0, zplane_list = [];
 
       log("drawing bitmap "+x+" "+y+" "+width+" "+height);
@@ -74,7 +74,7 @@
         limit = t.numstrips - sx;
 
       for(k = 0; k < limit; ++k, ++stripnr, ++sx, ++x) {
-        var offset = y * vs.pitch + (x * 8);
+        offset = y * vs.pitch + (x * 8);
         // adjust vs dirty
         if(vs.number == 0) {
           dst = vs.backBuf.newRelativeStream(offset);
@@ -85,24 +85,13 @@
 
         if(vs.number == 0) {
           dst = vs.backBuf.newRelativeStream(offset);
-          var frontBuf = vs.pixels.newRelativeStream(offset);
+          frontBuf = vs.pixels.newRelativeStream(offset);
           t.copy8Col(frontBuf, vs.pitch, dst, height, 1);
-          var frontBuf = vs.pixels.newRelativeStream(offset);
         }
 
-        t.decodeMask(x, y, width, height, stripnr, numzbuf, zplane_list, transpStrip, flag, tmsk_ptr);
+        // t.decodeMask(x, y, width, height, stripnr, numzbuf, zplane_list, transpStrip, flag, tmsk_ptr);
       }
       // debugBitmap(vs.pixels, 320, 200);
-      if(t.engine._debug) {
-        var stream = vs.backBuf.newRelativeStream(0);
-        for(var n = 0; n < 6; n++) {
-          var i = 0;
-          for(var i = 0; i < 255; i++)
-            stream.writeUI8(i % 255);
-          stream.seek(320 - i);
-        }
-        debugBitmap(vs.backBuf, width, height);
-      }
     };
 
     var curStrip = 0;
@@ -116,7 +105,7 @@
       if(stripnr * 4 + 8 < smapLen)
         offset = smap.seek(stripnr * 4 + 8, true).readUI32();
       smap.offset = offset;
-      log("drawing Strip "+stripnr+" "+x+" from offset "+offset+" "+smap.offset);
+      // log("drawing Strip "+stripnr+" "+x+" from offset "+offset+" "+smap.offset);
       return t.decompressBitmap(dst, vs.pitch, smap, height);
     };
 
@@ -488,6 +477,8 @@
     } else {
       t.updateDirtyScreen(0); // Main
     }
+
+    t.renderTexts();
   };
 
   s.updateDirtyScreen = function(n) {
@@ -532,6 +523,20 @@
     ctx.putImageData(dst, x, top);
   };
 
+  s.renderTexts = function() {
+    var t = this, texts = t._string, i, text,
+        ctx = ScummVM.context, width = ScummVM.width, height = ScummVM.height;
+    for(i = 0; i < texts.length; i++) {
+      text = texts[i];
+      if(!text.text || text.text == " ") continue;
+      ctx.font = "sans-serif 16px";
+      ctx.textAlign = "center";
+      ctx.fillStyle = t.paletteColor(text.color, t._charsetColorMap);
+      log("drawing text "+i+" ("+text.text+") at "+text.x+"/"+text.y+" in color "+text.color+" "+ctx.fillStyle);
+      ctx.fillText(text.text, text.x, text.y, width - text.x);
+    }
+  }
+
   s.addObjectToDrawQueue = function(obj) {
     var t = this;
     t._drawObjectQue.push(obj);
@@ -539,7 +544,7 @@
 
   s.clearDrawObjectQueue = function() {
     var t = this;
-    log("clearing draw queue");
+    // log("clearing draw queue");
     t._drawObjectQue = new Array();
   };
 
@@ -549,8 +554,8 @@
 
   s.processDrawQueue = function() {
     var t = this, i, j;
-    log("processing draw queue");
-    window.console.log(t._drawObjectQue);
+    // log("processing draw queue");
+    // window.console.log(t._drawObjectQue);
     for(i = 0; i < t._drawObjectQue.length; i++) {
       log("draw queue "+i);
       j = t._drawObjectQue[i];
@@ -566,22 +571,20 @@
     if(t._bgNeedsRedraw) arg = 0;
     if(od.obj_nr == 0) return;
 
-    log("drawing object "+obj);
-
-    var xpos = od.x_pos / 8,
+    var xpos = Math.floor(od.x_pos / 8),
         ypos = od.y_pos;
 
-    width = od.width / 8;
+    width = Math.floor(od.width / 8);
     height = od.height &= 0xFFFFFFF8;
 
-    log("check on screen "+od.x_pos+"/"+od.y_pos+" "+od.width+"x"+od.height);
-    window.console.log(width);
+    log("check "+obj+" on screen "+od.x_pos+"/"+od.y_pos+" "+od.width+"x"+od.height);
     if(width == 0 || xpos > t._screenEndStrip || xpos + width < s._screenStartStrip)
       return;
 
     window.console.log(od);
     ptr = t.getObjectImage(t.getOBIMFromObjectData(od), t.getState(od.obj_nr));
     if(!ptr) return;
+
 
     x = 0xFFFF;
     for(a = numstrip = 0; a < width; a++) {
@@ -604,10 +607,10 @@
   };
 
   s.getObjectImage = function(ptr, state) {
-    var t = this;
+    var t = this, im_ptr;
     log("image state "+state);
-    ptr = t.findResource(IMxx_tags[state], ptr);
-    return ptr;
+    im_ptr = t.findResource(IMxx_tags[state], ptr);
+    return im_ptr;
   }
 
   s.getOBIMFromObjectData = function(od) {
@@ -616,8 +619,12 @@
       ptr = t.getResourceAddress("fl_object", od.fl_object_index);
       ptr = t.findResource(_system.MKID_BE("OBIM"), ptr);
     } else {
+      log("finding OBIM "+od.obj_nr+" at offset "+od.OBIMoffset);
       ptr = t.getResourceAddress("room", t._roomResource);
-      ptr.seek(od.OBIMoffset);
+      ptr.offset = od.OBIMoffset;
+      ptr.readUI32(true);
+      log("OBIM size "+ptr.readUI32(true));
+      ptr.offset = od.OBIMoffset;
     }
     return ptr;
   };
@@ -641,14 +648,18 @@
   };
 
   s.redrawBGAreas = function() {
-    var t = this;
-    t._bgNeedsRedraw = false;
+    var t = this, val = 0;
+    log("redrawing bg");
     t.redrawBGStrip(0, t._gdi.numStrips);
+
+    // t.drawRoomObjects(val);
+    t._fullRedraw = false;
+    t._bgNeedsRedraw = false;
   };
 
   s.initBGBuffers = function() {
     var t = this, room, ptr;
     room = t.getResourceAddress("room", t._roomResource);
-  }
+  };
 
 }());

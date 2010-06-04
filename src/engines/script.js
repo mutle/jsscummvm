@@ -12,12 +12,14 @@
     t.freezeResistant = false;
     t.recursive = false;
     t.freezeCount = 0;
+    t.cutSceneOverride = 0;
     t.delayFrameCount = 0;
     t.didexec = false;
     t.args = [];
     t.slot = slot;
     t.cycle = 0;
     t.delay = 0;
+    t.ptr = null;
   };
 
   s.NestedScript = function() {
@@ -33,9 +35,11 @@
     t.nest = [];
     t.numNestedScripts = 0;
     t.localvar = []
-    t.cutSceneStackPointer = 0;
+    t.cutSceneStackPointer = -1;
     t.cutScenePtr = [];
     t.cutSceneScript = [];
+    t.cutSceneScriptIndex = 0;
+    t.cutSceneData = [];
 
     for(var i = 0; i < 80; i++) {
       if(i < 15)
@@ -62,6 +66,23 @@
      t.runScript(1, 0, 0, args);
   };
 
+  var slot_status = ["dead", "paused", "running"];
+
+  s.freezeScripts = function(flag) {
+    var t = this, vm = t._vm, i;
+    for(i = 0; i < vm.slot.length; i++) {
+      if(t._currentScript != i && vm.slot[i].status != "dead" && !vm.slot[i].freezeResistant) {
+        vm.slot[i].status = "paused";
+        vm.slot[i].freezeCount++;
+      }
+    }
+    // sentence stuff
+    if(vm.cutSceneScriptIndex != 0xFF) {
+      vm.slot[vm.cutSceneScriptIndex].status = "running";
+      vm.slot[vm.cutSceneScriptIndex].freezeCount = 0;
+    }
+  };
+
   s.runAllScripts = function() {
     var t = this, i, vm = t._vm, numCycles = 1, cycle, slot;
 
@@ -74,6 +95,7 @@
       for(i = 0; i < vm.slot.length; i++) {
         slot = vm.slot[i];
         if(slot.cycle == cycle && slot.status == "running" && !slot.didexec) {
+          // log("Running "+slot.number+" in slot "+slot.slot);
           t._currentScript = i;
           t.getScriptBaseAddress();
           t.getScriptEntryPoint();
@@ -93,11 +115,14 @@
       scriptPtr = t.getResourceAddress("script", script);
       scriptOffs = 8;
       scriptType = "global";
-      log("runScript(Global-"+script+")");
+      window.console.log(t._currentScript);
+      window.console.log(t._vm);
+      log("runScript(Global-"+script+") from "+t._roomResource);
     } else {
       scriptOffs = t._localScriptOffsets[script - t._nums['global_scripts']];
       scriptType = "local";
-      log("runScript("+script+")");
+      log("runScript("+script+") from "+t._roomResource);
+      log("script offset 0x"+scriptOffs.toString(16));
     }
 
     if(!cycle) cycle = 1;
@@ -111,6 +136,7 @@
     slot.recursive = recursive;
     slot.freezeCount = 0;
     slot.delayFrameCount = 0;
+    slot.ptr = null;
     slot.cycle = cycle;
 
     t.initializeLocals(slot.slot, args);
@@ -124,6 +150,7 @@
     t.updateScriptPtr();
 
     nest = t._vm.nest[t._vm.numNestedScripts];
+    log("nested "+t._vm.numNestedScripts);
 
     if(t._currentScript == 0xFF) {
       nest.number = 0xFF;
@@ -161,29 +188,46 @@
   s.runExitScript = function() {
     var t = this, script = 0;
     if(script = t.scummVar("exit_script")) {
-      log("Exit script");
       t.runScript(script, 0, 0, 0);
     }
-
+    if(t._gfx["EXCD"]) {
+      slot = t.getScriptSlot();
+      slot.status = "running";
+      slot.number = 10001;
+      slot.where = "room";
+      slot.offs = 8;
+      slot.ptr = t._gfx["EXCD"];
+      slot.freezeResistant = 0;
+      slot.freezeCount = 0;
+      slot.delayFrameCount = 0;
+      slot.recursive = false;
+      slot.cycle = 1;
+      t.initializeLocals(slot.slot, []);
+      t.runScriptNested(slot);
+    }
     if(script = t.scummVar("exit_script2")) {
       t.runScript(script, 0, 0, 0);
     }
   };
 
   s.runEntryScript = function() {
-    var t = this;
+    var t = this, script;
     if(script = t.scummVar("entry_script")) {
       t.runScript(script, 0, 0, 0);
     }
     if(t._gfx["ENCD"]) {
+      log("Running Entry Script 10002");
       slot = t.getScriptSlot();
       slot.status = "running";
       slot.number = 10002;
       slot.where = "room";
-      slot.offs = t._gfx["ENCD"].offset;
+      slot.offs = 8;
+      slot.ptr = t._gfx["ENCD"];
+      log("offset "+slot.offs);
       slot.freezeResistant = 0;
       slot.freezeCount = 0;
       slot.delayFrameCount = 0;
+      slot.recursive = false;
       slot.cycle = 1;
       t.initializeLocals(slot.slot, []);
       t.runScriptNested(slot);
@@ -288,7 +332,8 @@
       break;
       case "local":
       case "room":
-        t._scriptOrgPointer = t.getResourceAddress("room", t._roomResource);
+        if(slot.ptr) t._scriptOrgPointer = slot.ptr;
+        else t._scriptOrgPointer = t.getResourceAddress("room", t._roomResource);
         t._lastCodePointer = t._scriptOrgPointer;
       break;
       default:
@@ -334,7 +379,7 @@
         opcodes = t._opcodes;
     if(opcodes[i]) {
       t._opcode = i;
-      // log("Executing opcode 0x"+i.toString(16)+" at 0x"+(t._scriptPointer.offset - 9).toString(16)+" in script "+t._vm.slot[t._currentScript].number);
+      // log("Executing opcode 0x"+i.toString(16)+" at 0x"+(t._scriptPointer.offset).toString(16)+" in script "+t._vm.slot[t._currentScript].number);
       opcodes[i]();
     } else {
       log("Invalid opcode 0x"+i.toString(16)+" at "+t._scriptPointer.offset+" stopping script execution");
@@ -458,7 +503,7 @@
 
   s.putState = function(obj, state) {
     var t = this;
-      log("put State "+obj+" "+state);
+      // log("put State "+obj+" "+state);
     t._objectStateTable[obj] = state;
   };
 
@@ -486,8 +531,7 @@
       t.stopObjectScript(slot.number);
     } else {
       slot.number = 0;
-      // slot.slot = 0;
-       slot.status = "dead";
+      slot.status = "dead";
     }
     t._currentScript = 0xFF;
   };
@@ -518,6 +562,7 @@
 
   s.readVar = function(varId) {
     var t = this, a;
+    if(varId == 11) log("tmr_1");
     if(varId & 0x2000) {
       a = t.fetchScriptWord();
       if(a & 0x2000)
@@ -542,6 +587,7 @@
 
   s.writeVar = function(varId, value) {
     var t = this;
+    if(varId == 11) log("set tmr_1 "+value);
     if(!(varId & 0xF000)) {
       t._scummVars[varId] = value;
     }
@@ -665,13 +711,14 @@
 
   s.printString = function(slot, source, len) {
     var t = this, msg = source.readString(len);
-    log("PRINT "+slot+": "+s.convertMessageToString(msg));
+    return s.convertMessageToString(msg);
   };
 
   s.beginOverride = function() {
     var t = this, vm = t._vm, idx = vm.cutSceneStackPointer;
     vm.cutScenePtr[idx] = t._scriptPointer.offset;
     vm.cutSceneScript[idx] = t._scriptPointer;
+    log("begin override");
 
     t.fetchScriptByte();
     t.fetchScriptWord();
@@ -686,8 +733,24 @@
     t.scummVar("override", 0);
   };
 
+  s.beginCutscene = function(args) {
+    var t = this, scr = t._currentScript, vm = t._vm;
+    vm.slot[scr].cutsceneOverride++;
+    vm.cutSceneStackPointer++;
+    vm.cutSceneData[vm.cutSceneStackPointer] = args[0];
+    vm.cutSceneScript[vm.cutSceneStackPointer] = 0;
+    vm.cutScenePtr[vm.cutSceneStackPointer] = 0;
+
+    log("begin cutscene");
+
+    vm.cutSceneScriptIndex = scr;
+    if(t.scummVar("cutscene_start_script"))
+      t.runScript(t.scummVar("cutscene_start_script"), 0, 0, args);
+    vm.cutSceneScriptIndex = 0xFF;
+  };
+
   s.decodeParseString = function() {
-    var t = this, textSlot, len;
+    var t = this, textSlot, len, text;
 
     switch(t._actorToPrintStrFor) {
     case 252:
@@ -703,24 +766,35 @@
       textSlot = 0;
     break;
     }
-    t._string[textSlot] = "";
+    t._string[textSlot] = {x: 0, y: 0, right: 0, align: "left", color: 0, text:"", overhead: true, wrapping: false};
+    text = t._string[textSlot];
     while((t._opcode = t.fetchScriptByte()) != 0xFF) {
       switch(t._opcode & 0x0F) {
         case 0: // at
-          x = t.getVarOrDirectWord(PARAM_1);
-          y = t.getVarOrDirectWord(PARAM_2);
+          text.x = t.getVarOrDirectWord(PARAM_1);
+          text.y = t.getVarOrDirectWord(PARAM_2);
         break;
         case 1: // color
+          text.color = t.getVarOrDirectByte(PARAM_1);
+        break;
         case 2: // clipped
-          t.getVarOrDirectByte(PARAM_1);
+          text.right = t.getVarOrDirectWord(PARAM_1);
+        break;
+        case 3: // erase
+          w = t.getVarOrDirectWord(PARAM_1);
+          h = t.getVarOrDirectWord(PARAM_2);
         break;
         case 4: // center
+          text.align = "center";
+          text.overhead = false;
+        break;
         case 7: // overhead
+          text.overhead = true;
         break;
         case 15: // textstring
           len = t.resStrLen();
           var old_off = t._scriptPointer.offset;
-          t.printString(textSlot, t._scriptPointer, len);
+          text.text = t.printString(textSlot, t._scriptPointer, len);
           t._scriptPointer.seek(1);
         return;
         default:
@@ -921,6 +995,11 @@
     stopObjectCode: function() {
       s.stopObjectCode();
     },
+    stopScript: function() {
+      var script = s.getVarOrDirectByte(PARAM_1);
+      if(!script) s.stopObjectCode();
+      else s.stopScript(script);
+    },
     notEqualZero: function() {
       var a = s.getVar();
       s.jumpRelative(a != 0);
@@ -957,6 +1036,11 @@
               error("Divide by zero");
             s.push(s.pop() / i);
           break;
+          case 6: // normal
+            s._opcode = s.fetchScriptByte();
+            s.executeOpcode(s._opcode);
+            s.push(s.scummVar("keypress"));
+          break;
           default:
             log("unimplemented expression opcode " + (s._opcode & 0x1F));
           break;
@@ -989,6 +1073,7 @@
           break;
           case 3: // verb color
           case 4: // verb hicolor
+          case 16: // verb dimcolor
           case 18: // verb key
           case 23: // set back color
             s.getVarOrDirectByte(PARAM_1);
@@ -1102,6 +1187,7 @@
             s.getVarOrDirectByte(PARAM_1);
           break;
           case 8: // default
+          case 11: // palette
           case 15: // skip?
           case 18: // never zclip
           case 28: // skip?
@@ -1130,9 +1216,8 @@
     },
     loadRoom: function() {
       var room = s.getVarOrDirectByte(PARAM_1);
-      if(room != s._currentRoom)
-        s.startScene(room, 0, 0);
-
+      log("load room "+room + " " + s._currentRoom);
+      s.startScene(room, 0, 0);
       s._fullRedraw = true;
     },
     print: function() {
@@ -1161,7 +1246,7 @@
     },
     cutscene: function() {
       var args = s.getWordVararg();
-      // begin cutscene
+      s.beginCutscene(args);
     },
     endCutscene: function() {
       // end cutscene
@@ -1172,9 +1257,8 @@
       s.setResult(running);
     },
     setCameraAt: function() {
-      s.getVarOrDirectWord(PARAM_1);
-      s._screenEndStrip = s._gdi.numStrips - 1;
-      // set camera
+      s.setCameraAtEx(s.getVarOrDirectWord(PARAM_1));
+      // s._screenEndStrip = s._gdi.numStrips - 1;
     },
     startSound: function() {
       var sound = s.getVarOrDirectByte(PARAM_1);
@@ -1270,6 +1354,7 @@
       var sound = s.getVarOrDirectByte(PARAM_1);
     },
     beginOverride: function() {
+                log("override");
       if(s.fetchScriptByte() != 0)
         s.beginOverride();
       else
@@ -1278,6 +1363,62 @@
     getObjectState: function() {
       s.getResultPos();
       s.setResult(s.getState(s.getVarOrDirectWord(PARAM_1)));
+    },
+    chainScript: function() {
+      var vm = s._vm, script, cur, vars;
+      script = s.getVarOrDirectByte(PARAM_1);
+      vars = s.getWordVararg();
+      cur = s._currentScript;
+      vm.slot[cur].number = 0;
+      vm.slot[cur].status = "dead";
+      s._currentScript = 0xFF;
+      s.runScript(script, vm.slot[cur].freezeResistant, vm.slot[cur].recursive, vars);
+    },
+    saveRestoreVerbs: function() {
+      var a, b, c;
+      s._opcode = s.fetchScriptByte();
+      a = s.getVarOrDirectByte(PARAM_1);
+      b = s.getVarOrDirectByte(PARAM_2);
+      c = s.getVarOrDirectByte(PARAM_3);
+    },
+    add: function() {
+      var a;
+      s.getResultPos();
+      a = s.getVarOrDirectWord(PARAM_1);
+      s.setResult(s.readVar(s._resultVarNumber) + a);
+    },
+    subtract: function() {
+      var a;
+      s.getResultPos();
+      a = s.getVarOrDirectWord(PARAM_1);
+      s.setResult(s.readVar(s._resultVarNumber) - a);
+    },
+    freezeScripts: function() {
+      var scr = s.getVarOrDirectByte(PARAM_1);
+      if(scr != 0) s.freezeScripts(scr);
+      else s.unfreezeScripts();
+    },
+    isSoundRunning: function() {
+      var snd;
+      s.getResultPos();
+      snd = s.getVarOrDirectByte(PARAM_1);
+      // isSoundRunning
+      s.setResult(0);
+    },
+    getActorRoom: function() {
+      var act;
+      s.getResultPos();
+      // actor room
+      s.setResult(s._currentRoom);
+    },
+    soundKludge: function() {
+      var items;
+      items = s.getWordVararg();
+      // soundKludge
+    },
+    setObjectName: function() {
+      var obj = s.getVarOrDirectWord(PARAM_1);
+      // s.setObjectName(obj);
     }
   };
 
@@ -1285,6 +1426,7 @@
     0x00: s._opcodeCommands.stopObjectCode,
     0x01: s._opcodeCommands.putActor,
     0x02: s._opcodeCommands.startMusic,
+    0x03: s._opcodeCommands.getActorRoom,
     0x05: s._opcodeCommands.drawObject,
     0x06: s._opcodeCommands.getActorElevation,
     0x07: s._opcodeCommands.setState,
@@ -1311,17 +1453,25 @@
     0x28: s._opcodeCommands.equalZero,
     0x32: s._opcodeCommands.setCameraAt,
     0x33: s._opcodeCommands.roomOps,
+    0x3a: s._opcodeCommands.subtract,
     0x3c: s._opcodeCommands.stopSound,
     0x40: s._opcodeCommands.cutscene,
+    0x42: s._opcodeCommands.chainScript,
     0x44: s._opcodeCommands.isLess,
     0x46: s._opcodeCommands.increment,
     0x48: s._opcodeCommands.isEqual,
+    0x4a: s._opcodeCommands.startScript,
+    0x4c: s._opcodeCommands.soundKludge,
     0x4d: s._opcodeCommands.walkActorToActor,
     0x4f: s._opcodeCommands.unimplementedOpcode,
     0x52: s._opcodeCommands.actorFollowCamera,
     0x53: s._opcodeCommands.actorOps,
+    0x54: s._opcodeCommands.setObjectName,
     0x56: s._opcodeCommands.getActorMoving,
     0x58: s._opcodeCommands.beginOverride,
+    0x5a: s._opcodeCommands.add,
+    0x60: s._opcodeCommands.freezeScripts,
+    0x62: s._opcodeCommands.stopScript,
     0x63: s._opcodeCommands.getActorFacing,
     0x65: s._opcodeCommands.unimplementedOpcode,
     0x68: s._opcodeCommands.isScriptRunning,
@@ -1332,18 +1482,29 @@
     0x76: s._opcodeCommands.walkActorToObject,
     0x78: s._opcodeCommands.isGreater,
     0x7a: s._opcodeCommands.verbOps,
+    0x7c: s._opcodeCommands.isSoundRunning,
     0x80: s._opcodeCommands.breakHere,
     0x81: s._opcodeCommands.putActor,
+    0x83: s._opcodeCommands.getActorRoom,
+    0x8a: s._opcodeCommands.startScript,
     0x91: s._opcodeCommands.animateActor,
+    0x93: s._opcodeCommands.actorOps,
+    0x96: s._opcodeCommands.getRandomNr,
     0x98: s._opcodeCommands.systemOps,
     0x9a: s._opcodeCommands.move,
     0xa0: s._opcodeCommands.stopObjectCode,
     0xa8: s._opcodeCommands.notEqualZero,
+    0xab: s._opcodeCommands.saveRestoreVerbs,
     0xac: s._opcodeCommands.expression,
     0xad: s._opcodeCommands.putActorInRoom,
     0xc0: s._opcodeCommands.endCutscene,
+    0xc1: s._opcodeCommands.putActor,
+    0xc4: s._opcodeCommands.isLess,
     0xcc: s._opcodeCommands.pseudoRoom,
+    0xc1: s._opcodeCommands.animateActor,
     0xd2: s._opcodeCommands.actorFollowCamera,
+    0xe1: s._opcodeCommands.putActor,
+    0xe8: s._opcodeCommands.isScriptRunning,
     0xed: s._opcodeCommands.putActorInRoom,
     0xfa: s._opcodeCommands.verbOps,
     0xff: s._opcodeCommands.drawBox

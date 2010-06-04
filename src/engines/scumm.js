@@ -3,6 +3,9 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
 (function(){
   var _system = ScummVM.system;
 
+  function Point(x, y) {
+    return {x: x, y: y};
+  }
 
   ScummVM.engines.SCUMM = {
     _screenWidth: 320,
@@ -65,6 +68,8 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _screenEndStrip: 0,
     _localScriptOffsets: [],
     _skipDrawObject: false,
+    _texts: [],
+    _camera: {cur: Point(0,0), dest: Point(0,0), accel: Point(0,0), last: Point(0,0), follows: 0, mode: "normal", movingToActor:false},
     init: function(game) {
       this._game = game;
       this.initGraphics();
@@ -150,6 +155,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
         t.drawDirtyScreenParts();
       } else {
         // Actors, Camera, Objects
+        t.moveCamera();
         if(t._bgNeedsRedraw || t._fullRedraw)
           t.redrawBGAreas();
         t.processDrawQueue();
@@ -162,7 +168,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
         t.drawDirtyScreenParts();
       }
 
-      t._shouldQuit = true;
+      // t._shouldQuit = true;
     },
     shouldQuit: function() {
       var t = ScummVM.engines.SCUMM;
@@ -191,7 +197,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
       // camera triggers
       // camera._follows = 0;
       t._virtscreens[0].xstart = 0;
-      t._currentScript - 0xFF;
+      t._currentScript = 0xFF;
       t._currentRoom = 0;
       t._numObjectsInRoom = 0;
       t._actorToPrintStrFor = 0;

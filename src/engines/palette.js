@@ -43,6 +43,16 @@
     }
   };
 
+  s.paletteColor = function(idx, palette) {
+    var t = this, color = "#", i, c, pal_color = (palette ? palette[idx] : t._currentPalette[idx]);
+
+    for(i = 0; i < 3; i++) {
+      c = pal_color[0].toString(16)
+      color += (c.length == 1 ? "0" + c : c)
+    }
+    return color;
+  }
+
   s.updatePalette = function() {
   };
 }());

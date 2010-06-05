@@ -5,6 +5,7 @@
   var screens = ["main", "text", "verb", "unknown"];
   var MKID_BE = ScummVM.system.MKID_BE;
   var IMxx_tags = [ MKID_BE('IM00'), MKID_BE('IM01'), MKID_BE('IM02'), MKID_BE('IM03'), MKID_BE('IM04'), MKID_BE('IM05'), MKID_BE('IM06'), MKID_BE('IM07'), MKID_BE('IM08'), MKID_BE('IM09'), MKID_BE('IM0A'), MKID_BE('IM0B'), MKID_BE('IM0C'), MKID_BE('IM0D'), MKID_BE('IM0E'), MKID_BE('IM0F'), MKID_BE('IM10') ];
+  var zplane_tags = [  MKID_BE('ZP00'), MKID_BE('ZP01'), MKID_BE('ZP02'), MKID_BE('ZP03'), MKID_BE('ZP04') ];
 
     function debugBitmap(bitmap, w, h) {
       var i = 0, j = 0, out = "", bitmap = bitmap.newRelativeStream(0);
@@ -43,7 +44,7 @@
     t.objectMode = false;
     t.numZBuffer = 0;
     t.imgBufOffs = [0, 0, 0, 0, 0, 0, 0, 0];
-    t.numStrips = engine._screenWidth / 8;
+    t.numStrips = Math.floor(engine._screenWidth / 8);
     
     t.dbAllowMaskOr = 1 << 0;
     t.dbDrawMaskOnAll = 1 << 1;
@@ -54,12 +55,16 @@
       var smap_ptr = vm.findResource(_system.MKID_BE("SMAP"), src), tmsk_ptr = vm.findResource(_system.MKID_BE("TMSK"), src), numzbuf = 0, zplane_list = [];
 
       log("drawing bitmap "+x+" "+y+" "+width+" "+height);
-      // getZplanes
+
+      zplane_list = t.getZPlanes(src, false);
+      window.console.log("zplane_list");
+      window.console.log(zplane_list);
+      numzbuf = zplane_list.length;
 
       t.vertStripNextInc = height * vs.pitch - 1;
       t.objectMode = (flag & t.dbObjectMode) == t.dbObjectMode;
 
-      sx = x - vs.xstart / 8;
+      sx = x - Math.floor(vs.xstart / 8);
       if(sx < 0) {
         numstrip -= -sx;
         x += -sx;
@@ -67,7 +72,7 @@
         sx = 0;
       }
 
-      limit = Math.max(vm._roomWidth, vs.w) / 8 - x;
+      limit = Math.floor(Math.max(vm._roomWidth, vs.w) / 8) - x;
       if(limit > numstrip)
         limit = numstrip;
       if(limit > t.numStrips - sx)
@@ -89,7 +94,35 @@
           t.copy8Col(frontBuf, vs.pitch, dst, height, 1);
         }
 
-        // t.decodeMask(x, y, width, height, stripnr, numzbuf, zplane_list, transpStrip, flag, tmsk_ptr);
+        t.decodeMask(x, y, width, height, stripnr, numzbuf, zplane_list, transpStrip, flag, tmsk_ptr);
+
+        // Debug mask
+        var dst1, dst2, mask_ptr, i, h, j, maskbits;
+        for(i = 0; i < numzbuf; i++) {
+          dst1 = vs.pixels.newRelativeStream(offset);
+          dst2 = null;
+          if(vs.number == 0) {
+            dst2 = vs.backBuf.newRelativeStream(offset);
+          }
+          mask_ptr = t.getMaskBuffer(x, y, i);
+          for(h = 0; h < height - 1; h++) {
+            maskbits = mask_ptr.readUI8();
+            // window.console.log("mask x "+x+" y "+h+" "+maskbits.toString(2));
+            for(j = 0; j < 8; j++) {
+              if(maskbits & 0x80) {
+                dst1.writeUI8(12 + i);
+                // if(dst2) dst2.writeUI8(12);
+              } else {
+                dst1.seek(1);
+                // if(dst2) dst2.seek(1);
+              }
+              maskbits <<= 1;
+            }
+            dst1.seek(vs.pitch - 8);
+            mask_ptr.seek(t.numStrips - 1);
+            // if(dst2) dst2.seek(vs.pitch - 8);
+          }
+        }
       }
       // debugBitmap(vs.pixels, 320, 200);
     };
@@ -109,13 +142,18 @@
       return t.decompressBitmap(dst, vs.pitch, smap, height);
     };
 
-    t.decodeMask = function(x, y, width, heigh, stripnr, numzbuf, zplane_list, transpStrip, flag, tmsk_ptr) {
+    t.getMaskBuffer = function(x, y, z) {
+      var buf = t.engine.getResourceAddress("buffer", 9), offset = x + y * t.numStrips + t.imgBufOffs[z];
+      buf.seek(0, true);
+      return buf.newRelativeStream(offset - 8);
+    }
+
+    t.decodeMask = function(x, y, width, height, stripnr, numzbuf, zplane_list, transpStrip, flag, tmsk_ptr) {
       var t = this, i, mask_ptr, z_plane_ptr;
 
       if(flag & t.dbDrawMaskOnAll) {
         log("draw all");
       } else {
-        log("decoding mask "+numzbuf);
         for(i = 1; i < numzbuf; i++) {
           var offs, zplane;
 
@@ -140,8 +178,30 @@
           } else {
             if(!(transpStrip && (flag & t.dbAllowMaskOr)))
               for(var h = 0; h < height; h++)
-                mask_ptr.seek(h * t._nums['strips']).writeUI8(0);
+                mask_ptr.seek(h * t.numStrips).writeUI8(0);
           }
+        }
+      }
+    };
+
+    t.decompressMaskImg = function(dst, src, height) {
+      var b,c;
+      while(height) {
+        b = src.readUI8();
+        if(b & 0x80) {
+          b &= 0x7F;
+          c = src.readUI8();
+          do {
+            dst.writeUI8(c);
+            dst.seek(t.numStrips - 1);
+            --height;
+          } while(--b && height);
+        } else {
+          do {
+            dst.writeUI8(src.readUI8());
+            dst.seek(t.numStrips - 1);
+            --height;
+          } while(--b && height);
         }
       }
     };
@@ -165,6 +225,9 @@
           t.drawStripBasicV(dst, dstPitch, src, numLinesToProcess, false);
           debug(5, "drawing strip "+curStrip+" (x offset "+(curStrip*8)+") basic V");
         break;
+        case 24:
+        case 25:
+        case 26:
         case 27:
         case 28:
           t.drawStripBasicH(dst, dstPitch, src, numLinesToProcess, false);
@@ -184,7 +247,7 @@
           debug(5, "drawing strip "+curStrip+" (x offset "+(curStrip*8)+") complex");
         break;
         default:
-          debug(5, "unknown decompressBitmap code "+code);
+          log("unknown decompressBitmap code "+code);
         break;
       }
       return transpStrip;
@@ -408,6 +471,22 @@
       // window.console.log(s);
     };
 
+    t.getZPlanes = function(ptr, bmapImage) {
+      var numzbuf, i, vm = t.engine, zplane_list = [];
+      if(bmapImage)
+        zplane_list[0] = vm.findResource(MKID_BE("BMAP"), ptr);
+      else
+        zplane_list[0] = vm.findResource(MKID_BE("SMAP"), ptr);
+
+      if(t.zBufferDisabled)
+        return [];
+
+      numzbuf = t.numZBuffer;
+      for(i = 1; i < numzbuf; i++) {
+        zplane_list[i] = vm.findResource(zplane_tags[i], ptr);
+      }
+      return zplane_list;
+    };
   };
 
   s.initGraphics = function() {
@@ -528,11 +607,12 @@
         ctx = ScummVM.context, width = ScummVM.width, height = ScummVM.height;
     for(i = 0; i < texts.length; i++) {
       text = texts[i];
-      if(!text.text || text.text == " ") continue;
+      if(!text || !text.text || text.text == " ") continue;
       ctx.font = "sans-serif 16px";
       ctx.textAlign = "center";
-      ctx.fillStyle = t.paletteColor(text.color, t._charsetColorMap);
-      log("drawing text "+i+" ("+text.text+") at "+text.x+"/"+text.y+" in color "+text.color+" "+ctx.fillStyle);
+      t._charsetColorMap[1] = text.color;
+      ctx.fillStyle = t.paletteColor(t._charsetColorMap[text.color]);
+      // log("drawing text "+i+" ("+text.text+") at "+text.x+"/"+text.y+" in color "+text.color+" "+ctx.fillStyle);
       ctx.fillText(text.text, text.x, text.y, width - text.x);
     }
   }
@@ -577,7 +657,6 @@
     width = Math.floor(od.width / 8);
     height = od.height &= 0xFFFFFFF8;
 
-    log("check "+obj+" on screen "+od.x_pos+"/"+od.y_pos+" "+od.width+"x"+od.height);
     if(width == 0 || xpos > t._screenEndStrip || xpos + width < s._screenStartStrip)
       return;
 
@@ -619,11 +698,9 @@
       ptr = t.getResourceAddress("fl_object", od.fl_object_index);
       ptr = t.findResource(_system.MKID_BE("OBIM"), ptr);
     } else {
-      log("finding OBIM "+od.obj_nr+" at offset "+od.OBIMoffset);
       ptr = t.getResourceAddress("room", t._roomResource);
       ptr.offset = od.OBIMoffset;
       ptr.readUI32(true);
-      log("OBIM size "+ptr.readUI32(true));
       ptr.offset = od.OBIMoffset;
     }
     return ptr;
@@ -657,9 +734,23 @@
     t._bgNeedsRedraw = false;
   };
 
-  s.initBGBuffers = function() {
-    var t = this, room, ptr;
+  s.initBGBuffers = function(height) {
+    var t = this, room, ptr, i, size, itemsize;
     room = t.getResourceAddress("room", t._roomResource);
+    ptr = t.findResource(MKID_BE("RMIH"), t.findResource(MKID_BE("RMIM"), room));
+    ptr.seek(8);
+    t._gdi.numZBuffer = ptr.readUI16() + 1;
+
+    itemsize = (t._roomHeight + 4) * t._gdi.numStrips;
+    size = itemsize * t._gdi.numZBuffer;
+
+    t._res.createResource("buffer", 9, size, -1);
+    for(i = 0; i < t._gdi.imgBufOffs.length; i++) {
+      if(i < t._gdi.numZBuffer)
+        t._gdi.imgBufOffs[i] = i * itemsize;
+      else
+        t._gdi.imgBufOffs[i] = (t._gdi.numZBuffer - 1) * itemsize;
+    }
   };
 
 }());

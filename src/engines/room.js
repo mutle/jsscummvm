@@ -82,7 +82,7 @@
 
     t.setupRoomSubBlocks();
     t.resetRoomSubBlocks();
-    // t.initBGBuffers(t._roomHeight)
+    t.initBGBuffers(t._roomHeight)
     t.resetRoomObjects();
     // setCamera
     if(t._roomResource == 0)

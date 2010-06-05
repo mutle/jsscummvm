@@ -359,7 +359,13 @@
   };
 
   s.loadCharset = function(no) {
-    error("Loading charset "+no);
+    var t = this, i, ptr;
+    ptr = t.getResourceAddress("charset", no);
+    t._charsetData[no] = [];
+    for(i = 0; i < 15; i++) {
+      t._charsetData[no][i + 1] = ptr.seek(i + 14, true).readUI8();
+      t._charsetColorMap[i] = t._charsetData[no][i + 1];
+    }
   };
 
   s.getResourceRoomNr = function(type, idx) {

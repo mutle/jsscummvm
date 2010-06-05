@@ -69,6 +69,8 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _localScriptOffsets: [],
     _skipDrawObject: false,
     _texts: [],
+    _charsetData: [],
+    _charsetColorMap: [],
     _camera: {cur: Point(0,0), dest: Point(0,0), accel: Point(0,0), last: Point(0,0), follows: 0, mode: "normal", movingToActor:false},
     init: function(game) {
       this._game = game;
@@ -189,7 +191,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
       for(i = 0; i < 256; i++)
         t._roomPalette[i] = i;
       t.resetPalette();
-      // loadCharset(1);
+      t.loadCharset(1);
       // t._cursor.animate = 1;
       // actors
       t._vm.numNestedScripts = 0;

@@ -83,6 +83,17 @@
     }
   };
 
+  s.unfreezeScripts = function() {
+    var t = this, vm = t._vm, i;
+    for(i = 0; i < vm.slot.length; i++) {
+      if(vm.slot[i].status == "paused" && !--vm.slot[i].freezeCount) {
+        vm.slot[i].status = "running";
+      }
+
+    }
+    // sentence stuff
+  };
+
   s.runAllScripts = function() {
     var t = this, i, vm = t._vm, numCycles = 1, cycle, slot;
 
@@ -728,6 +739,7 @@
   s.endOverride = function() {
     var t = this, vm = t._vm, idx = vm.cutSceneStackPointer;
 
+    log("ending override");
     vm.cutScenePtr[idx] = 0;
     vm.cutSceneScript[idx] = null;
     t.scummVar("override", 0);
@@ -747,6 +759,25 @@
     if(t.scummVar("cutscene_start_script"))
       t.runScript(t.scummVar("cutscene_start_script"), 0, 0, args);
     vm.cutSceneScriptIndex = 0xFF;
+  };
+
+  s.endCutscene = function() {
+    var t = this, vm = t._vm, slot = vm.slot[t._currentScript], args = [];
+
+    if(slot.cutsceneOverride > 0)
+      slot.cutsceneOverride--;
+    args[0] = vm.cutSceneData[vm.cutSceneStackPointer];
+    t.scummVar("override", 0);
+    log("end cutscene");
+    if(vm.cutScenePtr[vm.cutSceneStackPointer] && slot.cutsceneOverride > 0)
+      slot.cutsceneOverride--;
+
+    vm.cutSceneScript[vm.cutSceneStackPointer] = 0;
+    vm.cutScenePtr[vm.cutSceneStackPointer] = 0;
+    vm.cutSceneStackPointer--;
+
+    if(t.scummVar("cutscene_end_script"))
+      t.runScript(t.scummVar("cutscene_end_script"), 0, 0, args);
   };
 
   s.decodeParseString = function() {
@@ -1093,7 +1124,8 @@
         case 0:
           xpos = s.getVarOrDirectWord(PARAM_1);
           ypos = s.getVarOrDirectWord(PARAM_2);
-          log("drawObject "+obj+" opcode 0 "+xpos+"/"+ypos);
+          // log("drawObject "+obj+" opcode 0 "+xpos+"/"+ypos);
+          return;
         break;
         case 1: // draw at
           xpos = s.getVarOrDirectWord(PARAM_1);
@@ -1249,7 +1281,7 @@
       s.beginCutscene(args);
     },
     endCutscene: function() {
-      // end cutscene
+      s.endCutscene();
     },
     isScriptRunning: function() {
       s.getResultPos();

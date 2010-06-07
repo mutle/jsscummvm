@@ -2,6 +2,9 @@
   var filesToLoad = 0;
 
   ScummVM.system = {
+    Point: function(x, y) {
+      return {x: x, y: y};
+    },
     getMillis: function() {
       d = new Date();
       return d.getTime();
@@ -28,7 +31,10 @@
         } else {
           $.ajax({type: "GET", url: game_url, dataType: "text", cache:false, success: function(data) {
             log(game_url + " loaded");
-            if(navigator.vendor.match("Apple")) window.localStorage[game_url] = data;
+            try {
+              if(navigator.vendor.match("Apple")) window.localStorage[game_url] = data;
+            } catch(e) {
+            };
             ScummVM.engine.setFile(file_no, filename, data);
             filesToLoad--;
             if(t.finishedLoading() && callback)

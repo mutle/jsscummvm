@@ -1,11 +1,7 @@
 var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
 
 (function(){
-  var _system = ScummVM.system;
-
-  function Point(x, y) {
-    return {x: x, y: y};
-  }
+  var _system = ScummVM.system, Point = _system.Point;
 
   ScummVM.engines.SCUMM = {
     _screenWidth: 320,
@@ -71,6 +67,8 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _texts: [],
     _charsetData: [],
     _charsetColorMap: [],
+    _actors: [],
+    _sortedActors: [],
     _camera: {cur: Point(0,0), dest: Point(0,0), accel: Point(0,0), last: Point(0,0), follows: 0, mode: "normal", movingToActor:false},
     init: function(game) {
       this._game = game;
@@ -156,11 +154,14 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
       if(t._currentRoom == 0) {
         t.drawDirtyScreenParts();
       } else {
-        // Actors, Camera, Objects
         t.moveCamera();
         if(t._bgNeedsRedraw || t._fullRedraw)
           t.redrawBGAreas();
         t.processDrawQueue();
+
+        t.processActors();
+
+        t._fullRedraw = false;
 
         if(t.scummVar("main_script")) {
           t.runScript(t.scummVar("main_script"), 0, 0, 0);
@@ -193,7 +194,8 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
       t.resetPalette();
       t.loadCharset(1);
       // t._cursor.animate = 1;
-      // actors
+      for(i = 0; i < t._nums['actors']; i++)
+        t._actors[i] =  new t.Actor(i);
       t._vm.numNestedScripts = 0;
       // verbs
       // camera triggers

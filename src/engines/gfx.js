@@ -97,32 +97,32 @@
         t.decodeMask(x, y, width, height, stripnr, numzbuf, zplane_list, transpStrip, flag, tmsk_ptr);
 
         // Debug mask
-        var dst1, dst2, mask_ptr, i, h, j, maskbits;
-        for(i = 0; i < numzbuf; i++) {
-          dst1 = vs.pixels.newRelativeStream(offset);
-          dst2 = null;
-          if(vs.number == 0) {
-            dst2 = vs.backBuf.newRelativeStream(offset);
-          }
-          mask_ptr = t.getMaskBuffer(x, y, i);
-          for(h = 0; h < height - 1; h++) {
-            maskbits = mask_ptr.readUI8();
-            // window.console.log("mask x "+x+" y "+h+" "+maskbits.toString(2));
-            for(j = 0; j < 8; j++) {
-              if(maskbits & 0x80) {
-                dst1.writeUI8(12 + i);
-                // if(dst2) dst2.writeUI8(12);
-              } else {
-                dst1.seek(1);
-                // if(dst2) dst2.seek(1);
-              }
-              maskbits <<= 1;
-            }
-            dst1.seek(vs.pitch - 8);
-            mask_ptr.seek(t.numStrips - 1);
-            // if(dst2) dst2.seek(vs.pitch - 8);
-          }
-        }
+        // var dst1, dst2, mask_ptr, i, h, j, maskbits;
+        // for(i = 0; i < numzbuf; i++) {
+        //   dst1 = vs.pixels.newRelativeStream(offset);
+        //   dst2 = null;
+        //   if(vs.number == 0) {
+        //     dst2 = vs.backBuf.newRelativeStream(offset);
+        //   }
+        //   mask_ptr = t.getMaskBuffer(x, y, i);
+        //   for(h = 0; h < height - 1; h++) {
+        //     maskbits = mask_ptr.readUI8();
+        //     // window.console.log("mask x "+x+" y "+h+" "+maskbits.toString(2));
+        //     for(j = 0; j < 8; j++) {
+        //       if(maskbits & 0x80) {
+        //         dst1.writeUI8(12 + i);
+        //         // if(dst2) dst2.writeUI8(12);
+        //       } else {
+        //         dst1.seek(1);
+        //         // if(dst2) dst2.seek(1);
+        //       }
+        //       maskbits <<= 1;
+        //     }
+        //     dst1.seek(vs.pitch - 8);
+        //     mask_ptr.seek(t.numStrips - 1);
+        //     // if(dst2) dst2.seek(vs.pitch - 8);
+        //   }
+        // }
       }
       // debugBitmap(vs.pixels, 320, 200);
     };
@@ -730,7 +730,6 @@
     t.redrawBGStrip(0, t._gdi.numStrips);
 
     // t.drawRoomObjects(val);
-    t._fullRedraw = false;
     t._bgNeedsRedraw = false;
   };
 

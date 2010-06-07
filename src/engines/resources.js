@@ -309,6 +309,7 @@
     t._nums['shadow_pallete_size'] = 256;
     t._nums['fl_object'] = 50;
     t._nums['images'] = 0;
+    t._nums['actors'] = 13;
   };
 
   s.allocateArrays = function() {
@@ -326,6 +327,7 @@
     for(i = 0; i < nums['bit_variables'] >> 3; i++) {
       t._bitVars[i] = 0;
     }
+    res.allocResTypeData("costume", MKID_BE('COST'), nums['costumes'], "costume", 1);
     res.allocResTypeData("room", MKID_BE('ROOM'), nums['rooms'], "room", 1);
     res.allocResTypeData("room_image", MKID_BE('RMIM'), nums['rooms'], "room image", 1);
     res.allocResTypeData("script", MKID_BE('SCRP'), nums['scripts'], "script", 1);

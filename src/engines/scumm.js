@@ -159,6 +159,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
           t.redrawBGAreas();
         t.processDrawQueue();
 
+        t.resetActorBgs();
         t.processActors();
 
         t._fullRedraw = false;

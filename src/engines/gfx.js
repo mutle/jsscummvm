@@ -21,6 +21,7 @@
 
 
   s.VirtScreen = function(n) {
+    var t = this;
     this.number = n;
     this.name = screens[n];
     this.topline = 0;
@@ -28,6 +29,15 @@
     this.backBuf = null;
     this.pixels = null;
     this.pitch = 0;
+
+    t.getPixels = function(x, y) {
+      return t.pixels.newRelativeStream(y * t.pitch + (t.xstart + x));
+    };
+
+    t.getBackPixels = function(x, y) {
+      return t.backBuf.newRelativeStream(y * t.pitch + (t.xstart + x));
+    };
+
   };
 
   s.Gdi = function(engine) {
@@ -54,11 +64,7 @@
       var vm = t.engine, dst, limit, numstrip, sx, frontBuf, transpStrip, offset;
       var smap_ptr = vm.findResource(_system.MKID_BE("SMAP"), src), tmsk_ptr = vm.findResource(_system.MKID_BE("TMSK"), src), numzbuf = 0, zplane_list = [];
 
-      log("drawing bitmap "+x+" "+y+" "+width+" "+height);
-
       zplane_list = t.getZPlanes(src, false);
-      window.console.log("zplane_list");
-      window.console.log(zplane_list);
       numzbuf = zplane_list.length;
 
       t.vertStripNextInc = height * vs.pitch - 1;
@@ -138,7 +144,6 @@
       if(stripnr * 4 + 8 < smapLen)
         offset = smap.seek(stripnr * 4 + 8, true).readUI32();
       smap.offset = offset;
-      // log("drawing Strip "+stripnr+" "+x+" from offset "+offset+" "+smap.offset);
       return t.decompressBitmap(dst, vs.pitch, smap, height);
     };
 
@@ -152,7 +157,6 @@
       var t = this, i, mask_ptr, z_plane_ptr;
 
       if(flag & t.dbDrawMaskOnAll) {
-        log("draw all");
       } else {
         for(i = 1; i < numzbuf; i++) {
           var offs, zplane;
@@ -454,21 +458,16 @@
 
     t.copy8Col = function(dst, dstPitch, src, height, bitDepth) {
       var i = 0;
-      var s = "", c;
       do {
-        var l = "";
         for(i = 0; i < 8; i++) {
           c = src.readUI8();
           dst.writeUI8(c);
-          l += c+" ";
         }
         if(height > 1) {
           dst.seek(dstPitch-8);
           src.seek(dstPitch-8);
         }
-        s += l + "\n";
       } while(--height);
-      // window.console.log(s);
     };
 
     t.getZPlanes = function(ptr, bmapImage) {
@@ -486,6 +485,20 @@
         zplane_list[i] = vm.findResource(zplane_tags[i], ptr);
       }
       return zplane_list;
+    };
+
+    t.resetBackground = function(top, bottom, strip) {
+      var vs = s._virtscreens[0], backbuff_ptr, bgbak_ptr, numLinesToProcess;
+
+      if(top < 0) top = 0;
+      if(bottom > vs.height) bottom = vs.height;
+      if(top >= bottom) return;
+      bgbak_ptr = vs.backBuf.newRelativeStream(top * vs.pitch + (strip + vs.xstart/8) * 8);
+      backbuff_ptr = vs.pixels.newRelativeStream(top * vs.pitch + (strip + vs.xstart/8) * 8);
+      numLinesToProcess = bottom - top;
+      if(numLinesToProcess) {
+        t.copy8Col(backbuff_ptr, vs.pitch, bgbak_ptr, numLinesToProcess, 1);
+      }
     };
   };
 
@@ -580,7 +593,6 @@
 
     if(width <= 0 || height <= 0) return;
 
-    // log("drawing strip to screen ("+x+"/"+y+") ("+(x+width)+"/"+(y+height)+")");
     src = vs.pixels.newRelativeStream(0);
     // src = (vs.number == 0 ? vs.backBuf : vs.pixels).newRelativeStream(0);
     dst = ctx.getImageData(x, y, width, height);
@@ -612,7 +624,6 @@
       ctx.textAlign = "center";
       t._charsetColorMap[1] = text.color;
       ctx.fillStyle = t.paletteColor(t._charsetColorMap[text.color]);
-      // log("drawing text "+i+" ("+text.text+") at "+text.x+"/"+text.y+" in color "+text.color+" "+ctx.fillStyle);
       ctx.fillText(text.text, text.x, text.y, width - text.x);
     }
   }
@@ -624,7 +635,6 @@
 
   s.clearDrawObjectQueue = function() {
     var t = this;
-    // log("clearing draw queue");
     t._drawObjectQue = new Array();
   };
 
@@ -634,10 +644,7 @@
 
   s.processDrawQueue = function() {
     var t = this, i, j;
-    // log("processing draw queue");
-    // window.console.log(t._drawObjectQue);
     for(i = 0; i < t._drawObjectQue.length; i++) {
-      log("draw queue "+i);
       j = t._drawObjectQue[i];
       if(j) t.drawObject(j, 0);
     }
@@ -660,7 +667,6 @@
     if(width == 0 || xpos > t._screenEndStrip || xpos + width < s._screenStartStrip)
       return;
 
-    window.console.log(od);
     ptr = t.getObjectImage(t.getOBIMFromObjectData(od), t.getState(od.obj_nr));
     if(!ptr) return;
 
@@ -687,7 +693,6 @@
 
   s.getObjectImage = function(ptr, state) {
     var t = this, im_ptr;
-    log("image state "+state);
     im_ptr = t.findResource(IMxx_tags[state], ptr);
     return im_ptr;
   }
@@ -726,7 +731,6 @@
 
   s.redrawBGAreas = function() {
     var t = this, val = 0;
-    log("redrawing bg");
     t.redrawBGStrip(0, t._gdi.numStrips);
 
     // t.drawRoomObjects(val);

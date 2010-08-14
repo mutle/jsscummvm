@@ -112,7 +112,6 @@
       blocktype = file.readUI32(true);
       itemsize = file.readUI32(true);
       if(file.eof()) break;
-      // log(_system.reverse_MKID(blocktype)+ " "+itemsize);
 
       switch(blocktype) {
       case MKID_BE("DOBJ"):
@@ -151,7 +150,6 @@
       t.readIndexBlock(file, blocktype, itemsize);
     }
     t.closeRoom();
-    log("Finished loading index file");
   };
 
   s.readIndexBlock = function(file, blocktype, itemsize) {
@@ -469,13 +467,11 @@
     t._resourceLastSearchSize = totalsize = searchin.readUI32(true);
     curpos = 8;
 
-    if(debug) log("searching ENCD");
     while(curpos < totalsize) {
       t = searchin.readUI32(true)
       if(t == tag) {
         t._resourceLastSearchBuf = searchin;
         size = searchin.readUI32(true);
-          if(debug) log("offset ENCD "+searchin.offset.toString(16));
         searchin.seek(-8);
         return searchin.newStream(searchin.offset, size);
       }

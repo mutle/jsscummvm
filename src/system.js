@@ -2,8 +2,15 @@
   var filesToLoad = 0;
 
   ScummVM.system = {
+    new_dir_table: [ 270, 90, 180, 0 ],
     Point: function(x, y) {
       return {x: x, y: y};
+    },
+    clone: function(obj) {
+      var clone = {};
+      clone.prototype = obj.prototype;
+      for (property in obj) clone[property] = obj[property];
+      return clone;
     },
     getMillis: function() {
       d = new Date();
@@ -75,6 +82,28 @@
         throw ("Argument out of range: " + orig_value);
       }
       return s;
+    },
+    newDirToOldDir: function(dir) {
+      if(dir >= 71 && dir <= 109) return 1;
+      if(dir >= 109 && dir <= 251) return 2;
+      if(dir >= 251 && dir <= 289) return 0;
+      return 3;
+    },
+    oldDirToNewDir: function(dir) {
+      window.console.log("converting dir "+dir+" -> "+this.new_dir_table[dir]);
+      return this.new_dir_table[dir];
+    },
+    toSimpleDir: function(dirType, dir) {
+      var directions = [ 22, 72, 107, 157, 202, 252, 287, 337];
+      for(var i = 0; i < 7; i++) {
+        if(dir >= directions[i] && dir <= directions[i+1]);
+            return i+1;
+      }
+      return 0;
+    },
+    normalizeAngle: function(angle) {
+      var temp = (angle + 360) % 360;
+      return this.toSimpleDir(1, temp) * 45;
     }
   };
 }());

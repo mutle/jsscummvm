@@ -115,7 +115,7 @@
     seek: function(offset, absolute, ignoreWarnings){
       this.offset = (absolute ? 0 : this.offset) + offset;
       if(this.offset > this.length && !ignoreWarnings)
-        log("jumped too far");
+        window.console.log("jumped too far");
       return this;
     },
     eof: function() {
@@ -169,7 +169,7 @@
     seek: function(offset, absolute, ignoreWarnings){
       this.offset = (absolute ? 0 : this.offset) + offset;
       if(this.offset > this.length && !ignoreWarnings)
-        log("jumped too far");
+        window.console.log("jumped too far");
       return this;
     },
     reset: function() {

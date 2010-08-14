@@ -7,7 +7,6 @@
     t.width = 0; t.height = 0; t.numObjects = 0;
     t.stream = stream;
     if(t.stream) {
-      log(stream.offset);
       t.width = t.stream.readUI16();
       t.height = t.stream.readUI16();
       t.numObjects = t.stream.readUI16();
@@ -23,9 +22,7 @@
       t.obj_id = stream.readUI16(); t.x = stream.readUI8(); t.y = stream.readUI8(); t.w = stream.readUI8(); t.h = stream.readUI8();
       t.flags = stream.readUI8(); t.parent = stream.readUI8(); t.walk_x = stream.readUI16(); t.walk_y = stream.readUI16();
       t.actordir = stream.readUI8();
-      window.console.log(t.obj_id);
-      window.console.log(this);
-    } else { log("no stream"); }
+    }
   };
 
   s.ImageHeader = function(stream) {
@@ -45,7 +42,6 @@
         var x = stream.readUI16(), y = stream.readUI16();
         t.hotspot[i] = [x, y];
       }
-      window.console.log(this);
     }
   };
 
@@ -88,7 +84,7 @@
     if(t._roomResource == 0)
       return;
 
-    // showActors
+    t.showActors();
     t.runEntryScript();
   };
 
@@ -108,7 +104,6 @@
 
 
     rmim = t.findResource(MKID_BE("RMIM"), roomptr);
-    log(rmim.offset);
     t._gfx["IM00"] = t.findResource(MKID_BE("IM00"), rmim);
 
     ptr = t.findResource(MKID_BE("EXCD"), roomptr);
@@ -119,18 +114,14 @@
 
     // local scripts
     searchptr = roomptr.newRelativeStream(8);
-    log("loading local scripts");
     while(searchptr.findNext(MKID_BE("LSCR"))) {
       // searchptr.seek(8);
       id = searchptr.readUI8();
       searchptr.seek(-5);
       var size = searchptr.readUI32(true);
-      t._localScriptOffsets[id - t._nums['global_scripts']] = searchptr.offset + 2;
-      log("local script id "+id+" offset 0x"+(t._localScriptOffsets[id - t._nums['global_scripts']]).toString(16));
+      t._localScriptOffsets[id - t._nums['global_scripts']] = searchptr.offset + 1;
       searchptr.seek(size - 8);
     }
-
-      window.console.log(t._localScriptOffsets);
 
     ptr = t.findResourceData(MKID_BE("CLUT"), roomptr);
     if(ptr) t._gfx["CLUT"] = ptr;

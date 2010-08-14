@@ -106,7 +106,6 @@
       for(i = 0; i < vm.slot.length; i++) {
         slot = vm.slot[i];
         if(slot.cycle == cycle && slot.status == "running" && !slot.didexec) {
-          // log("Running "+slot.number+" in slot "+slot.slot);
           t._currentScript = i;
           t.getScriptBaseAddress();
           t.getScriptEntryPoint();
@@ -126,14 +125,11 @@
       scriptPtr = t.getResourceAddress("script", script);
       scriptOffs = 8;
       scriptType = "global";
-      window.console.log(t._currentScript);
-      window.console.log(t._vm);
-      log("runScript(Global-"+script+") from "+t._roomResource);
+      // log("runScript(Global-"+script+") from "+t._roomResource);
     } else {
       scriptOffs = t._localScriptOffsets[script - t._nums['global_scripts']];
       scriptType = "local";
-      log("runScript("+script+") from "+t._roomResource);
-      log("script offset 0x"+scriptOffs.toString(16));
+      // log("runScript("+script+") from "+t._roomResource);
     }
 
     if(!cycle) cycle = 1;
@@ -161,7 +157,6 @@
     t.updateScriptPtr();
 
     nest = t._vm.nest[t._vm.numNestedScripts];
-    log("nested "+t._vm.numNestedScripts);
 
     if(t._currentScript == 0xFF) {
       nest.number = 0xFF;
@@ -227,14 +222,12 @@
       t.runScript(script, 0, 0, 0);
     }
     if(t._gfx["ENCD"]) {
-      log("Running Entry Script 10002");
       slot = t.getScriptSlot();
       slot.status = "running";
       slot.number = 10002;
       slot.where = "room";
       slot.offs = 8;
       slot.ptr = t._gfx["ENCD"];
-      log("offset "+slot.offs);
       slot.freezeResistant = 0;
       slot.freezeCount = 0;
       slot.delayFrameCount = 0;
@@ -495,11 +488,9 @@
 
   s.getObjectIndex = function(obj) {
     var t = this, i;
-    log("getObjectIndex "+obj);
     if(obj < 1)
       return -1;
     for(i = t._objs.length; i > 0; i--) {
-      if(t._objs[i] && t._objs[i].obj_nr > 0) window.console.log(t._objs[i]);
       if(t._objs[i] && t._objs[i].obj_nr == obj)
         return i;
     }
@@ -509,12 +500,10 @@
   s.getState = function(obj) {
     var t = this;
     return t._objectStateTable[obj];
-    log("image state "+state);
   };
 
   s.putState = function(obj, state) {
     var t = this;
-      // log("put State "+obj+" "+state);
     t._objectStateTable[obj] = state;
   };
 
@@ -573,7 +562,6 @@
 
   s.readVar = function(varId) {
     var t = this, a;
-    if(varId == 11) log("tmr_1");
     if(varId & 0x2000) {
       a = t.fetchScriptWord();
       if(a & 0x2000)
@@ -598,7 +586,6 @@
 
   s.writeVar = function(varId, value) {
     var t = this;
-    if(varId == 11) log("set tmr_1 "+value);
     if(!(varId & 0xF000)) {
       t._scummVars[varId] = value;
     }
@@ -657,9 +644,7 @@
     var t = this;
 
     return;
-    // log("checking if update is needed "+t._lastCodePointer.offset+" != "+ t._scriptOrgPointer.offset);
     //if(t._lastCodePointer != t._scriptOrgPointer) {
-      log("pointer reset");
       oldoffs = t._scriptPointer.offset;
       t.getScriptBaseAddress();
       t._scriptPointer.seek(oldoffs);
@@ -752,8 +737,6 @@
     vm.cutSceneData[vm.cutSceneStackPointer] = args[0];
     vm.cutSceneScript[vm.cutSceneStackPointer] = 0;
     vm.cutScenePtr[vm.cutSceneStackPointer] = 0;
-
-    log("begin cutscene");
 
     vm.cutSceneScriptIndex = scr;
     if(t.scummVar("cutscene_start_script"))
@@ -958,7 +941,6 @@
           a = s.getVarOrDirectWord(PARAM_1);
           b = s.getVarOrDirectWord(PARAM_2);
           s.initScreens(a, b);
-          log("set screen "+a+" "+b);
         break;
         case 4: // room palette
           a = s.getVarOrDirectWord(PARAM_1);
@@ -1012,16 +994,14 @@
     getActorMoving: function() {
       var act;
       s.getResultPos();
-      act = s.getVarOrDirectByte(PARAM_1);
-      s.setResult(0);
-      // Moving
+      act = s.getActor(s.getVarOrDirectByte(PARAM_1));
+      s.setResult(act.moving ? 1 : 0);
     },
     getActorFacing: function() {
       var act;
       s.getResultPos();
-      act = s.getVarOrDirectByte(PARAM_1);
-      s.setResult(0);
-      // Facing
+      act = s.getActor(s.getVarOrDirectByte(PARAM_1));
+      s.setResult(act.facing);
     },
     stopObjectCode: function() {
       s.stopObjectCode();
@@ -1203,28 +1183,47 @@
       s.setResult(Math.floor(Math.random()*s.getVarOrDirectByte(PARAM_1)));
     },
     actorOps: function() {
-      var a = s.getVarOrDirectByte(PARAM_1);
+      var a = s.getVarOrDirectByte(PARAM_1), act = s.getActor(a), i, j;
+
+      window.console.log(act);
 
       while((s._opcode = s.fetchScriptByte()) != 0xFF) {
         switch(s._opcode & 0x1F) {
-          case 0:
           case 1: // costume
-          case 3: // sound
+            act.setActorCostume(s.getVarOrDirectByte(PARAM_1));
+          break;
           case 4: // walk animation
-          case 6:
+            act.walkFrame = s.getVarOrDirectByte(PARAM_1);
+          break;
+          case 5: // talk animation
+            act.talkStartFrame = s.getVarOrDirectByte(PARAM_1);
+            act.talkStopFrame = s.getVarOrDirectByte(PARAM_2);
+          break;
+          case 6: // stand animation
+            a.standFrame = s.getVarOrDirectByte(PARAM_1);
+          break;
+          case 8: // default
+            act.initActor(0);
+          break;
+          case 11: // palette
+            i = s.getVarOrDirectByte(PARAM_1);
+            j = s.getVarOrDirectByte(PARAM_2);
+            act.setPalette(i, j);
+          break;
+          case 0:
+          case 3: // sound
           case 12: // talk color
           case 16: // actor width
           case 19: // always zclip
             // unimplemented
             s.getVarOrDirectByte(PARAM_1);
           break;
-          case 8: // default
-          case 11: // palette
-          case 15: // skip?
           case 18: // never zclip
-          case 28: // skip?
+          case 20: // ignore boxes
+          case 21: // follow boxes
           break;
-          case 5: // talk animation
+          case 2: // step dist
+          case 17: // actor scale
             talkStartFrame = s.getVarOrDirectByte(PARAM_1);
             talkStopFrame = s.getVarOrDirectByte(PARAM_2);
           break;
@@ -1240,7 +1239,6 @@
     breakHere: function() {
       s.updateScriptPtr();
       slot = s._vm.slot[s._currentScript];
-      // log("break script "+slot.number+" slot "+s._currentScript);
       s._currentScript = 0xFF;
     },
     jumpRelative: function() {
@@ -1248,7 +1246,6 @@
     },
     loadRoom: function() {
       var room = s.getVarOrDirectByte(PARAM_1);
-      log("load room "+room + " " + s._currentRoom);
       s.startScene(room, 0, 0);
       s._fullRedraw = true;
     },
@@ -1257,24 +1254,27 @@
       s.decodeParseString();
     },
     putActorInRoom: function() {
-      var act = s.getVarOrDirectByte(PARAM_1), room = s.getVarOrDirectByte(PARAM_2);
-
-      // putActor
+      var act = s.getActor(s.getVarOrDirectByte(PARAM_1)), room = s.getVarOrDirectByte(PARAM_2);
+      if(!act) return;
+      act.room = room;
+      act.showActor();
+      if(!room)
+        act.putActor(0, 0, 0);
     },
     putActor: function() {
-      var act = s.getVarOrDirectByte(PARAM_1), x = s.getVarOrDirectWord(PARAM_2), y = s.getVarOrDirectWord(PARAM_3);
-
-      // putActor(x, y);
+      var act = s.getActor(s.getVarOrDirectByte(PARAM_1)), x = s.getVarOrDirectWord(PARAM_2), y = s.getVarOrDirectWord(PARAM_3);
+      if(act) act.putActor(x, y);
     },
     actorFollowCamera: function() {
       var act = s.getVarOrDirectByte(PARAM_1);
-
+      log("actorFollowCamera "+act);
       // actorFollowCamera(act);
     },
     animateActor: function() {
-      var act = s.getVarOrDirectByte(PARAM_1), anim = s.getVarOrDirectByte(PARAM_2);
+      var act = s.getActor(s.getVarOrDirectByte(PARAM_1)), anim = s.getVarOrDirectByte(PARAM_2);
 
-      // animateActor
+      log("animateActor "+act.number+" anim 0x"+anim.toString(16));
+      act.animateActor(anim);
     },
     cutscene: function() {
       var args = s.getWordVararg();
@@ -1386,7 +1386,6 @@
       var sound = s.getVarOrDirectByte(PARAM_1);
     },
     beginOverride: function() {
-                log("override");
       if(s.fetchScriptByte() != 0)
         s.beginOverride();
       else
@@ -1440,8 +1439,8 @@
     getActorRoom: function() {
       var act;
       s.getResultPos();
-      // actor room
-      s.setResult(s._currentRoom);
+      act = s.getActor(s.getVarOrDirectByte(PARAM_1));
+      if(act) s.setResult(act.room);
     },
     soundKludge: function() {
       var items;
@@ -1533,7 +1532,7 @@
     0xc1: s._opcodeCommands.putActor,
     0xc4: s._opcodeCommands.isLess,
     0xcc: s._opcodeCommands.pseudoRoom,
-    0xc1: s._opcodeCommands.animateActor,
+    0xd1: s._opcodeCommands.animateActor,
     0xd2: s._opcodeCommands.actorFollowCamera,
     0xe1: s._opcodeCommands.putActor,
     0xe8: s._opcodeCommands.isScriptRunning,

@@ -177,7 +177,6 @@
         t.animProgress = 0;
         s.costumeLoader.loadCostume(t.costume);
         if(s.costumeLoader.increaseAnims(t)) {
-          log("next frame");
           t.needRedraw = true;
         }
       }
@@ -187,7 +186,6 @@
       cmd = Math.round(anim / 4);
       dir = _system.oldDirToNewDir(anim % 4);
       cmd = 0x3F - cmd + 2;
-      log("anim command "+cmd+" for anim "+anim+" dir "+dir);
       switch(cmd) {
         case 2: // stop walking
           t.startAnimActor(t.standFrame);
@@ -223,10 +221,9 @@
         break;
       };
       if(t.isInCurrentRoom() && t.costume != 0) {
-        log("loading costume "+t.costume+" frame "+f);
         t.animProgress = 0;
         t.needRedraw = true;
-        s.costumeLoader.costumeDecodeData(this, f, -1);
+        s.costumeLoader.costumeDecodeData(this, f, 0xFFFF);
         t.frame = f;
       }
     };
@@ -337,11 +334,11 @@
 
       var frameOffs = t.baseptr.newRelativeStream(t.frameOffsets);
       for(i = 0; i < 16; i++) {
-        frameOffs.seek(-2);
         var frame = t.baseptr.newRelativeStream(frameOffs.readUI16());
       }
       var animOffs = t.baseptr.newRelativeStream(t.animsOffsets);
       for(i = 0; i < t.numAnim+1; i++) {
+        var offs = animOffs.readUI16();
       }
     };
     t.costumeDecodeData = function(actor, frame, usemask) {
@@ -357,8 +354,8 @@
       baseptr = t.baseptr.newRelativeStream();
       tmp = baseptr.newRelativeStream(t.dataOffsets + anim * 2);
       offset = tmp.readUI16();
+      if(offset == 0) return;
       r = baseptr.newRelativeStream(offset);
-      if(offset == baseptr.offset) return;
 
       mask = r.readUI16();
       do {
@@ -373,9 +370,9 @@
               extra = r.readUI8();
               cmd = t.animCmd(j);
               if(cmd == 0x7A) {
-                log("0x7A");
+                actor.cost.stopped &= ~(1 << i);
               } else if(cmd == 0x79) {
-                log("0x79");
+                actor.cost.stopped |= (1 << i);
               } else {
                 actor.cost.curpos[i] = actor.cost.start[i] = j;
                 actor.cost.end[i] = j + (extra & 0x7F);
@@ -482,12 +479,10 @@
       return result;
     };
     t.drawLimb = function(actor, limb) {
-      var i, code, baseptr, frameptr, frameoffset, cost = actor.cost, costumeInfo, xmoveCur, ymoveCur, loader, offset;
+      var i, code, baseptr, frameptr, frameoffset, cost = actor.cost, costumeInfo, xmoveCur, ymoveCur, offset;
 
       if(cost.curpos[limb] == 0xFFFF || cost.stopped & (1 << limb))
         return 0;
-
-      log("drawing limb "+limb+" for actor "+actor.number);
 
       i = cost.curpos[limb] & 0x7FFF;
       baseptr = t.loader.baseptr.newRelativeStream();
@@ -498,6 +493,7 @@
       if(code != 0x7B) {
         frameptr.seek(code * 2);
         offset = frameptr.readUI16();
+        if(offset > baseptr.length) return 0;
         t.srcptr = baseptr.newRelativeStream(offset);
         costumeInfo = new s.CostumeInfo(t.srcptr);
         t.width = costumeInfo.width;
@@ -526,7 +522,7 @@
       codec.x = t.actorX;
       codec.y = t.actorY;
 
-      if(false) { // (use_scaling) {
+      if(use_scaling) {
         codec.scaleXstep = -1;
         if(xmoveCur < 0) {
           xmoveCur = -xmoveCur;
@@ -554,7 +550,7 @@
           }
         }
 
-        t.scaleIndexX = codec.startScaleIndexX;
+        t.scaleIndexX = startScaleIndexX;
 
         if(skip) skip--;
 
@@ -610,7 +606,7 @@
       if(t.mirror) {
         log("mirror");
       } else {
-        if(true) // (!use_scaling)
+        if(!use_scaling)
           skip = rect.right - t.out.w;
         if(skip > 0) {
           codec.skip_width -= skip;
@@ -679,7 +675,7 @@
 
       scaleIndexY = t.scaleIndexY;
 
-      if(len)
+      if(len > 0)
         startpos = true;
 
       do {
@@ -696,14 +692,12 @@
             if(t.scaleY == 255 || scale_table[scaleIndexY++] < t.scaleY) {
               // mask stuff
               if(color && !masked) {
-                if(t.shadow_mode & 0x20) {
-                } else {
-                  pcolor = t.palette[color];
-                }
+                pcolor = t.palette[color];
                 dst.writeUI8(pcolor);
                 dst.seek(t.out.pitch - 1);
-              } else
+              } else {
                 dst.seek(t.out.pitch);
+              }
               y++;
             }
             if(!--height) {

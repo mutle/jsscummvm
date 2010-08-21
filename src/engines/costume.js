@@ -3,6 +3,7 @@
       s = ScummVM.engines.SCUMM;
 
   var MF_NEW_LEG = 1, MF_IN_LEG = 2, MF_TURN = 4, MF_LAST_LEG = 8, MF_FROZEN = 0x80;
+  var kObjectClassNeverClip = 20, kObjectClassAlwaysClip = 21, kObjectClassIgoreBoxes = 22, kObjectClassYFlip = 29, kObjectClassXFlip = 30, kObjectClassPlayer = 31, kObjectClassUntoucable = 32;
 
   var scale_table = [
     0xFF, 0xFD, 0x7D, 0xBD, 0x3D, 0xDD, 0x5D, 0x9D,
@@ -37,8 +38,12 @@
     0x16, 0x96, 0x56, 0xD6, 0x36, 0xB6, 0x76, 0xF6,
     0x0E, 0x8E, 0x4E, 0xCE, 0x2E, 0xAE, 0x6E, 0xEE,
     0x1E, 0x9E, 0x5E, 0xDE, 0x3E, 0xBE, 0x7E, 0xFE
-    ];
+  ];
   var scaletableSize = 128;
+
+  function revBitMask(x) {
+    return (0x80 >> (x));
+  }
 
   s.CostumeData = function() {
     var t = this;
@@ -97,6 +102,7 @@
     t.animSpeed = 0;
     t.costumeNeedsInit = true;
     t.palette = [];
+    t.forceClip = 0;
     for(var i = 0; i < 256; i++) {
       t.palette[i] = 0;
     }
@@ -117,6 +123,12 @@
       }
     };
 
+    t.classChanged = function(cls, value) {
+      if(cls == kObjectClassAlwaysClip)
+        t.forceClip = value;
+      if(cls == kObjectClassIgoreBoxes)
+        t.ignoreBoxes = value;
+    };
     t.putActor = function(dstX, dstY, newRoom) {
       t.pos.x = dstX || t.pos.x;
       t.pos.y = dstY || t.pos.y;
@@ -146,8 +158,7 @@
         if(!t.needRedraw) return;
         t.needRedraw = false;
       }
-
-      // t.setupActorScale();
+      t.setupActorScale();
       t.prepareDrawActorCostume(bcr);
       if(bcr.drawCostume(s._virtscreens[0], s._gdi.numStrips, t, t.drawToBackBuf) & 1) {
         t.needRedraw = true;
@@ -156,6 +167,9 @@
         t.top = bcr.draw_top;
         t.bottom = bcr.draw_bottom;
       }
+    };
+    t.setupActorScale = function() {
+      if(t.ignoreBoxes) return;
     };
     t.prepareDrawActorCostume = function(bcr) {
       bcr.actorId = t.number;
@@ -167,6 +181,17 @@
       bcr.setCostume(t.costume);
       bcr.setPalette(t.palette);
       bcr.setFacing(t);
+
+      if(t.forceClip)
+        bcr.zbuf = t.forceClip;
+      else if(true) { //false) {
+        bcr.zbuf = 1;
+        // NeverClip
+      } else {
+        log("mask from box");
+        // Mask from Box
+      }
+
       bcr.draw_top = 0x7fffffff;
       bcr.draw_bottom = 0;
     };
@@ -183,7 +208,7 @@
     };
     t.animateActor = function(anim) {
       var cmd, dir;
-      cmd = Math.round(anim / 4);
+      cmd = Math.floor(anim / 4);
       dir = _system.oldDirToNewDir(anim % 4);
       cmd = 0x3F - cmd + 2;
       switch(cmd) {
@@ -262,7 +287,7 @@
         if(vald == 0xFFFF) continue;
         s.costumeLoader.costumeDecodeData(this, vald, amask);
       }
-      t.needsRedraw = true;
+      t.needRedraw = true;
     };
 
     t.showActor = function() {
@@ -282,7 +307,7 @@
       }
       t.visible = false;
       t.needRedraw = false;
-      t.needsBgReset = true;
+      t.needBgReset = true;
     };
 
     t.initActor(-1);
@@ -298,7 +323,7 @@
     t.numColors = 0;
     t.numAnim = 0;
     t.format = 0;
-    t.mirror = false
+    t.mirror = true;
     t.id = 0;
 
     t.loadCostume = function(id) {
@@ -450,6 +475,7 @@
     t.draw_top = t.draw_bottom = 0;
     t.out = t.srcptr = null;
     t.palette = [];
+    t.mirror = false;
 
     t.setPalette = function(palette) {
       var i, color;
@@ -457,6 +483,7 @@
         t.palette[i] = t.loader.palette[i];
     };
     t.setFacing = function(actor) {
+      t.mirror = _system.newDirToOldDir(actor.facing) != 0 || t.loader.mirror;
     };
     t.setCostume = function(costume, shadow) {
     };
@@ -474,7 +501,7 @@
       dst.pixels.seek(-(s._virtscreens[0].xstart & 7));
       t.numStrips = numStrips;
       t.xmove = t.ymove = 0;
-      for(i = 0; i < 16; i++)
+      for(i = 0; i < 8; i++)
         result |= t.drawLimb(a, i);
       return result;
     };
@@ -518,7 +545,8 @@
       } else {
         codec.mask = 15; codec.shr = 4;
       }
-      use_scaling = (t.scaleX != 0xFF) || (t.scaleY == 0xFF);
+      use_scaling = false; // (t.scaleX != 0xFF) || (t.scaleY == 0xFF);
+      // t.mirror = true;
       codec.x = t.actorX;
       codec.y = t.actorY;
 
@@ -529,7 +557,23 @@
           codec.scaleXstep = 1;
         }
         if(t.mirror) {
-          log("mirror");
+          startScaleIndexX = t.scaleIndexX = scaletableSize - xmoveCur;
+          for(i = 0; i < xmoveCur; i++) {
+            if(scale_table[t.scaleIndexX++] < t.scaleX)
+              codec.x -= codec.scaleXstep;
+          }
+
+          rect.left = rect.right = codec.x;
+
+          t.scaleIndexX = startScaleIndexX;
+          for(i = 0; i < t.width; i++) {
+            if(rect.right < 0) {
+              skip++;
+              startScaleIndexX = t.scaleIndexX;
+            }
+            if(scale_table[t.scaleIndexX++] < t.scaleX)
+              rect.right++;
+          }
         } else {
           startScaleIndexX = t.scaleIndexX = xmoveCur + scaletableSize;
           for(i = 0; i < xmoveCur; i++) {
@@ -541,7 +585,7 @@
 
           t.scaleIndexX = startScaleIndexX;
           for(i = 0; i < t.width; i++) {
-            if(rect.left >= t.out.width) {
+            if(rect.left >= t.out.w) {
               startScaleIndexX = t.scaleIndexX;
               skip++;
             }
@@ -597,14 +641,28 @@
 
       // mark dirty
 
-      if(rect.top >= t.out.height || rect.bottom <= 0)
+      if(rect.top >= t.out.h || rect.bottom <= 0)
         return 0;
-      if(rect.left >= t.out.width || rect.right <= 0)
+      if(rect.left >= t.out.w || rect.right <= 0)
         return 0;
 
       codec.replen = 0;
       if(t.mirror) {
-        log("mirror");
+        if(!use_scaling)
+          skip = -codec.x;
+        if(skip > 0) {
+          log("skip > 0");
+          codec.skip_width -= skip;
+          codec_ignorePakCols(codec, skip);
+          codec.x = 0;
+        } else {
+          skip = rect.right - t.out.w;
+          if(skip <= 0) {
+            drawFlag = 2;
+          } else {
+            codec.skip_width -= skip;
+          }
+        }
       } else {
         if(!use_scaling)
           skip = rect.right - t.out.w;
@@ -621,17 +679,19 @@
         }
       }
 
-      if(codec.skip_width <= 0)
+      if(codec.skip_width <= 0) {
+        // log("out of bounds "+t.actorId);
         return 0;
+      }
 
       if(rect.left < 0)
         rect.left = 0;
       if(rect.top < 0)
         rect.top = 0;
-      if(rect.top > t.out.height)
-        rect.top = t.out.height;
-      if(rect.bottom > t.out.height)
-        rect.bottom = t.out.height;
+      if(rect.top > t.out.h)
+        rect.top = t.out.h;
+      if(rect.bottom > t.out.h)
+        rect.bottom = t.out.h;
 
       if(t.draw_top > rect.top)
         t.draw_top = rect.top;
@@ -643,7 +703,9 @@
       }
 
       codec.destptr = t.out.pixels.newRelativeStream(codec.y * t.out.pitch + codec.x);
-      // codec.mask_ptr = vm
+
+      codec.mask_ptr = s._gdi.getMaskBuffer(0, codec.y, t.zbuf);
+
       t.proc3(codec);
 
       return drawFlag;
@@ -664,16 +726,18 @@
     };
 
     t.proc3 = function(codec) {
-      var mask, src, dst, len, maskbit, y, color, height, pcolor, scaleIndexY, masked = false, startpos = false;
+      var mask, src, dst, len, maskbit, maskval, y, color, height, pcolor, scaleIndexY, masked = false, startpos = false;
 
       y = codec.y;
-      src = t.srcptr;
+      src = t.srcptr.newRelativeStream();
       dst = codec.destptr.newRelativeStream();
       len = codec.replen;
       color = codec.repcolor;
       height = t.height;
 
       scaleIndexY = t.scaleIndexY;
+      maskbit = revBitMask(codec.x & 7);
+      mask = codec.mask_ptr.newRelativeStream(Math.floor(codec.x / 8));
 
       if(len > 0)
         startpos = true;
@@ -690,14 +754,16 @@
         do {
           if(!startpos) {
             if(t.scaleY == 255 || scale_table[scaleIndexY++] < t.scaleY) {
-              // mask stuff
+              maskval = mask.readUI8();
+              mask.seek(-1);
+              masked = (y < 0 || y >= t.out.h) || (codec.x < 0 || codec.x >= t.out.w) || (codec.mask_ptr && (maskval & maskbit));
               if(color && !masked) {
                 pcolor = t.palette[color];
                 dst.writeUI8(pcolor);
-                dst.seek(t.out.pitch - 1);
-              } else {
-                dst.seek(t.out.pitch);
+                dst.seek(-1);
               }
+              dst.seek(t.out.pitch);
+              mask.seek(t.numStrips);
               y++;
             }
             if(!--height) {
@@ -708,16 +774,17 @@
               scaleIndexY = t.scaleIndexY;
               if(t.scaleX == 255 || scale_table[t.scaleIndexX] < t.scaleX) {
                 codec.x += codec.scaleXstep;
-                if(codec.x < 0 || codec.x >= t.out.width)
+                if(codec.x < 0 || codec.x >= t.out.w)
                   return;
+                maskbit = revBitMask(codec.x & 7);
                 codec.destptr.seek(codec.scaleXstep);
               }
               t.scaleIndexX += codec.scaleXstep;
               dst = codec.destptr.newRelativeStream();
+              mask = codec.mask_ptr.newRelativeStream(Math.floor(codec.x / 8));
             }
-          } else {
-            startpos = false;
           }
+          startpos = false;
         } while(--len);
       } while(1);
 
@@ -783,10 +850,13 @@
     for(i = 0; i < t._gdi.numStrips; i++) {
       strip = t.screenStartStrip + i;
       for(j = 1; j < t._actors.length; j++) {
-        if(t._actors[j].needsBgReset) {
+        if((t._actors[j].top != 0x7fffffff && t._actors[j].needRedraw )|| t._actors[j].needBgReset) {
           t._gdi.resetBackground(t._actors[j].top, t._actors[j].bottom, i);
         }
       }
+    }
+    for(j = 1; j < t._actors.length; j++) {
+      t._actors[j].needBgReset = false;
     }
   }
 

@@ -266,11 +266,12 @@
   };
 
   s.updateScriptPtr = function() {
-    var t = this;
+    var t = this, offset = 0;
     if(t._currentScript == 0xFF) {
       return;
     }
-    t._vm.slot[t._currentScript].offs = t._scriptPointer.offset;
+    offset = t._scriptPointer.offset - t._scriptOrgPointer.offset;
+    t._vm.slot[t._currentScript].offs = offset;
   }
 
   s.stopScript = function(script) {
@@ -332,13 +333,13 @@
     switch(slot.where) {
       case "global":
         t._scriptOrgPointer = t.getResourceAddress("script", slot.number);
-        t._lastCodePointer = t._scriptOrgPointer;
+        t._lastCodePointer = t._scriptOrgPointer.newRelativeStream();
       break;
       case "local":
       case "room":
         if(slot.ptr) t._scriptOrgPointer = slot.ptr;
         else t._scriptOrgPointer = t.getResourceAddress("room", t._roomResource);
-        t._lastCodePointer = t._scriptOrgPointer;
+        t._lastCodePointer = t._scriptOrgPointer.newRelativeStream();
       break;
       default:
         log("Unknown script location "+slot.where);
@@ -350,7 +351,10 @@
     var t = this, offset;
     if(t._currentScript == 0xFF)
       return;
-    t._scriptPointer = t._scriptOrgPointer.newRelativeStream(t._vm.slot[t._currentScript].offs);
+    if(t._scriptOrgPointer.offset > 0)
+      t._scriptPointer = t._scriptOrgPointer.newRelativeStream(t._vm.slot[t._currentScript].offs - t._scriptOrgPointer.offset);
+    else
+      t._scriptPointer = t._scriptOrgPointer.newRelativeStream(t._vm.slot[t._currentScript].offs);
   };
 
   s.getVerbEntryPoint = function(obj, entry) {
@@ -643,12 +647,11 @@
   s.updateCodePointer = function() {
     var t = this;
 
-    return;
-    //if(t._lastCodePointer != t._scriptOrgPointer) {
+    if(t._lastCodePointer.offset != t._scriptOrgPointer.offset) {
       oldoffs = t._scriptPointer.offset;
       t.getScriptBaseAddress();
       t._scriptPointer.seek(oldoffs);
-    //}
+    }
   }
 
   s.fetchScriptByte = function() {
@@ -1273,7 +1276,6 @@
     animateActor: function() {
       var act = s.getActor(s.getVarOrDirectByte(PARAM_1)), anim = s.getVarOrDirectByte(PARAM_2);
 
-      log("animateActor "+act.number+" anim 0x"+anim.toString(16));
       act.animateActor(anim);
     },
     cutscene: function() {

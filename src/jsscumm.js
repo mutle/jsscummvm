@@ -1,6 +1,7 @@
 var ScummVM = {
   width: 320,
   height: 200,
+  scale: 1,
   engines: {},
   engine: null,
   canvas: null,

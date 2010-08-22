@@ -504,7 +504,7 @@
 
   s.initGraphics = function() {
     var t = this,
-        ctx = ScummVM.context, width = ScummVM.width, height = ScummVM.height;
+        ctx = ScummVM.context, width = ScummVM.width, height = ScummVM.height, scale = ScummVM.scale;
 
     ctx.fillStyle = "black";
     ctx.fillRect(0,0,width,height);
@@ -556,7 +556,7 @@
 
   s.drawDirtyScreenParts = function() {
     var t = this,
-        ctx = ScummVM.context, width = ScummVM.width, height = ScummVM.height;
+        ctx = ScummVM.context, width = ScummVM.width, height = ScummVM.height, scale = ScummVM.scale;
 
     ctx.fillStyle = "black";
     ctx.fillRect(0,0,width,height);
@@ -579,9 +579,9 @@
   };
 
   s.drawStripToScreen = function(vs, x, width, top, bottom) {
-    var t = this, y, height
+    var t = this, y, height,
         ctx = ScummVM.context,
-        pal = t._currentPalette, i;
+        pal = t._currentPalette, i, j, scale = ScummVM.scale;
 
     if(bottom <= top || top >= vs.h) return;
     if(width > vs.w - x) width = vs.w - x;

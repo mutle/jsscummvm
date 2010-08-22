@@ -136,7 +136,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
       t.decreaseScriptDelay(delta);
 
       // this.processInput();
-      // Do SCUMM stuff
+      t.updateScummVars();
       if(t._completeScreenRedraw) {
         // Draw Verbs
         t._completeScreenRedraw = false;
@@ -154,6 +154,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
       if(t._currentRoom == 0) {
         t.drawDirtyScreenParts();
       } else {
+        t.walkActors();
         t.moveCamera();
         if(t._bgNeedsRedraw || t._fullRedraw)
           t.redrawBGAreas();
@@ -173,6 +174,11 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
       }
 
       // t._shouldQuit = true;
+    },
+    updateScummVars: function() {
+      var t = this;
+      t.scummVar("mouse_x", 10);
+      t.scummVar("mouse_y", 10);
     },
     shouldQuit: function() {
       var t = ScummVM.engines.SCUMM;

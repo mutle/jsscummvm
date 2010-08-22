@@ -86,9 +86,9 @@
     t.needRedraw = false;
     t.needBgReset = false;
     t.visible = false;
-    t.moving = false;
-    t.speedx = 8;
-    t.speedy = 2;
+    t.moving = 0;
+    t.speedx = 0;
+    t.speedy = 0;
     t.frame = 0;
     t.costume = 0;
     t.facing = 180;
@@ -121,6 +121,9 @@
     t.initActor = function(mode) {
       if(mode == -1) { // Reset
       }
+
+      t.stopActorMoving();
+      t.setActorWalkSpeed(8, 2);
     };
 
     t.classChanged = function(cls, value) {
@@ -147,6 +150,7 @@
       }
     };
     t.adjustActorPos = function() {
+      // var abr = adjustXYToBeInBox(t.pos.x, t.pos.y);
     };
     t.isInCurrentRoom = function() {
       return t.room == s._currentRoom;
@@ -155,7 +159,8 @@
       var bcr = s.costumeRenderer;
       if(t.costume == 0) return;
       if(!hitTestMode) {
-        if(!t.needRedraw) return;
+        // TODO DOn't draw actor for every frame
+        // if(!t.needRedraw) return;
         t.needRedraw = false;
       }
       t.setupActorScale();
@@ -215,12 +220,14 @@
         case 2: // stop walking
           t.startAnimActor(t.standFrame);
           t.stopActorMoving();
+          log("stop walking");
         break;
         case 3: // change direction immediatly
           t.moving &= ~MF_TURN;
           t.setDirection(dir);
         break;
         case 4:
+          log("turn to direction");
           t.turnToDirection(dir);
         break;
         default:
@@ -248,11 +255,30 @@
       if(t.isInCurrentRoom() && t.costume != 0) {
         t.animProgress = 0;
         t.needRedraw = true;
+        t.cost.animCounter = 0;
+        if(f == t.initFrame) {
+          t.cost.reset();
+        }
         s.costumeLoader.costumeDecodeData(this, f, 0xFFFF);
         t.frame = f;
       }
     };
     t.stopActorMoving = function() {
+      t.moving = 0;
+    };
+    t.setActorWalkSpeed = function(newSpeedX, newSpeedY) {
+      if(newSpeedX == t.speedx && newSpeedY == t.speedy) return;
+
+      t.speedx = newSpeedX;
+      t.speedy = newSpeedY;
+
+      if(t.moving) {
+        log("moving");
+      }
+    };
+    t.walkActor = function() {
+      if(!t.moving) return;
+      log("walk actor");
     };
     t.setActorCostume = function(c) {
       var i;
@@ -275,6 +301,13 @@
       t.palette[idx] = val;
       t.needRedraw = true;
     };
+    t.setScale = function(sx, sy) {
+      if(sx != -1)
+        t.scalex = sx;
+      if(sy != -1)
+        t.scaley = sy;
+      t.needRedraw = true;
+    };
     t.setDirection = function(dir) {
       var amask, i, vald;
       if(t.facing == dir) return;
@@ -288,6 +321,9 @@
         s.costumeLoader.costumeDecodeData(this, vald, amask);
       }
       t.needRedraw = true;
+    };
+    t.turnToDirection = function(newdir) {
+      log("turnToDirection");
     };
 
     t.showActor = function() {
@@ -545,8 +581,7 @@
       } else {
         codec.mask = 15; codec.shr = 4;
       }
-      use_scaling = false; // (t.scaleX != 0xFF) || (t.scaleY == 0xFF);
-      // t.mirror = true;
+      use_scaling = (t.scaleX != 0xFF) || (t.scaleY != 0xFF);
       codec.x = t.actorX;
       codec.y = t.actorY;
 
@@ -624,7 +659,7 @@
         codec.x += xmoveCur
         codec.y += ymoveCur
 
-        if(!t.mirror) {
+        if(t.mirror) {
           rect.left = codec.x;
           rect.right = codec.x + t.width;
         } else {
@@ -641,19 +676,20 @@
 
       // mark dirty
 
-      if(rect.top >= t.out.h || rect.bottom <= 0)
+      if(rect.top >= t.out.h || rect.bottom <= 0) {
         return 0;
-      if(rect.left >= t.out.w || rect.right <= 0)
+      }
+      if(rect.left >= t.out.w || rect.right <= 0) {
         return 0;
+      }
 
       codec.replen = 0;
       if(t.mirror) {
         if(!use_scaling)
           skip = -codec.x;
         if(skip > 0) {
-          log("skip > 0");
           codec.skip_width -= skip;
-          codec_ignorePakCols(codec, skip);
+          t.codec_ignorePakCols(codec, skip);
           codec.x = 0;
         } else {
           skip = rect.right - t.out.w;
@@ -680,7 +716,6 @@
       }
 
       if(codec.skip_width <= 0) {
-        // log("out of bounds "+t.actorId);
         return 0;
       }
 
@@ -712,13 +747,14 @@
     };
 
     t.codec_ignorePakCols = function(codec, num) {
+      // log("ignore "+num+" cols for actor "+t.actorId);
       num *= t.height;
       do {
         codec.replen = t.srcptr.readUI8();
         codec.repcolor = codec.replen >> codec.shr;
-        codec.replen &= codec.maks;
+        codec.replen &= codec.mask;
         if(!codec.replen)
-          codec.replen *= t.srcptr.readUI8();
+          codec.replen = t.srcptr.readUI8();
         do {
           if(!--num) return;
         } while(--codec.replen);
@@ -757,6 +793,8 @@
               maskval = mask.readUI8();
               mask.seek(-1);
               masked = (y < 0 || y >= t.out.h) || (codec.x < 0 || codec.x >= t.out.w) || (codec.mask_ptr && (maskval & maskbit));
+              if(codec.mask_ptr && (maskval & maskbit))
+                ; //log("masked in mask");
               if(color && !masked) {
                 pcolor = t.palette[color];
                 dst.writeUI8(pcolor);
@@ -845,13 +883,23 @@
     }
   };
 
+  s.walkActors = function() {
+    var t = this, i;
+    for(i = 1; i < t._actors.length; i++) {
+      if(t._actors[i].isInCurrentRoom())
+        t._actors[i].walkActor();
+    }
+  };
+
   s.resetActorBgs = function() {
     var t = this, i, j, strip;
     for(i = 0; i < t._gdi.numStrips; i++) {
       strip = t.screenStartStrip + i;
       for(j = 1; j < t._actors.length; j++) {
         if((t._actors[j].top != 0x7fffffff && t._actors[j].needRedraw )|| t._actors[j].needBgReset) {
-          t._gdi.resetBackground(t._actors[j].top, t._actors[j].bottom, i);
+          if((t._actors[j].bottom - t._actors[j].top) >= 0) {
+            t._gdi.resetBackground(t._actors[j].top, t._actors[j].bottom, i);
+          }
         }
       }
     }

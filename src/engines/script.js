@@ -270,8 +270,7 @@
     if(t._currentScript == 0xFF) {
       return;
     }
-    offset = t._scriptPointer.offset - t._scriptOrgPointer.offset;
-    t._vm.slot[t._currentScript].offs = offset;
+    t._vm.slot[t._currentScript].offs = t._scriptPointer.offset;
   }
 
   s.stopScript = function(script) {
@@ -387,10 +386,11 @@
         opcodes = t._opcodes;
     if(opcodes[i]) {
       t._opcode = i;
+
       // log("Executing opcode 0x"+i.toString(16)+" at 0x"+(t._scriptPointer.offset).toString(16)+" in script "+t._vm.slot[t._currentScript].number);
       opcodes[i]();
     } else {
-      log("Invalid opcode 0x"+i.toString(16)+" at "+t._scriptPointer.offset+" stopping script execution");
+      log("Invalid opcode 0x"+i.toString(16)+" at 0x"+t._scriptPointer.offset.toString(16)+" stopping execution of script "+t._vm.slot[t._currentScript].number);
       t._vm.slot[t._currentScript].status = "dead";
       t._currentScript = 0xFF;
     }
@@ -483,6 +483,7 @@
     t.scummVar("debugmode", t._debugMode);
     t.scummVar("fade_delay", 3);
     t.scummVar("charinc", 4);
+    t.scummVar("machine_speed", 0xFF);
 
     // t.setTalkingActor(0);
 
@@ -891,6 +892,7 @@
             log("unimplemented cursorCommand opcode " + (s._opcode & 0x1F));
         break;
       }
+      s.scummVar("cursorstate", 1);
     },
     setVarRange : function() {
       var a, b;
@@ -998,7 +1000,8 @@
       var act;
       s.getResultPos();
       act = s.getActor(s.getVarOrDirectByte(PARAM_1));
-      s.setResult(act.moving ? 1 : 0);
+      s.setResult(act.moving);
+      log("getActorMoving");
     },
     getActorFacing: function() {
       var act;
@@ -1156,7 +1159,7 @@
       var act;
       s.getResultPos();
       act = s.getVarOrDirectByte(PARAM_1);
-      // actor stuff
+      s.setResult(act.elevation);
     },
     drawBox: function() {
       var x,y,x2,y2, color;
@@ -1188,12 +1191,15 @@
     actorOps: function() {
       var a = s.getVarOrDirectByte(PARAM_1), act = s.getActor(a), i, j;
 
-      window.console.log(act);
-
       while((s._opcode = s.fetchScriptByte()) != 0xFF) {
         switch(s._opcode & 0x1F) {
           case 1: // costume
             act.setActorCostume(s.getVarOrDirectByte(PARAM_1));
+          break;
+          case 2: // step dist
+            i = s.getVarOrDirectByte(PARAM_1);
+            j = s.getVarOrDirectByte(PARAM_2);
+            act.setActorWalkSpeed(i, j);
           break;
           case 4: // walk animation
             act.walkFrame = s.getVarOrDirectByte(PARAM_1);
@@ -1203,7 +1209,7 @@
             act.talkStopFrame = s.getVarOrDirectByte(PARAM_2);
           break;
           case 6: // stand animation
-            a.standFrame = s.getVarOrDirectByte(PARAM_1);
+            act.standFrame = s.getVarOrDirectByte(PARAM_1);
           break;
           case 8: // default
             act.initActor(0);
@@ -1213,25 +1219,33 @@
             j = s.getVarOrDirectByte(PARAM_2);
             act.setPalette(i, j);
           break;
+          case 13: // actor name
+            s.loadPtrToResource("actor_name", a);
+          break;
+          case 17: // actor scale
+            i = s.getVarOrDirectByte(PARAM_1);
+            j = s.getVarOrDirectByte(PARAM_2);
+            act.boxscale = i;
+            act.setScale(i, j);
+          break;
+          case 18: // never zclip
+            act.forceClip = 0;
+          break;
+          case 19: // always zclip
+            act.forceClip = s.getVarOrDirectByte(PARAM_1);
+          break;
+          case 20: // ignore boxes
+          case 21: // follow boxes
+            act.ignoreBoxes = !(s.opcode & 1);
+            act.forceClip = 0;
+            if(act.isInCurrentRoom())
+              act.putActor();
+          break;
           case 0:
           case 3: // sound
           case 12: // talk color
           case 16: // actor width
-          case 19: // always zclip
-            // unimplemented
-            s.getVarOrDirectByte(PARAM_1);
-          break;
-          case 18: // never zclip
-          case 20: // ignore boxes
-          case 21: // follow boxes
-          break;
-          case 2: // step dist
-          case 17: // actor scale
-            talkStartFrame = s.getVarOrDirectByte(PARAM_1);
-            talkStopFrame = s.getVarOrDirectByte(PARAM_2);
-          break;
-          case 13: // actor name
-            s.loadPtrToResource("actor_name", a);
+            //unimplemented
           break;
           default:
             log("unimplemented actorOps opcode " + (s._opcode & 0x1F));
@@ -1305,6 +1319,7 @@
     },
     faceActor: function() {
       var act = s.getVarOrDirectByte(PARAM_1), obj = s.getVarOrDirectWord(PARAM_2);
+      log("faceActor");
       // a.faceToObject(obj)
     },
     systemOps: function() {
@@ -1340,6 +1355,7 @@
       var a, obj;
       a = s.getVarOrDirectByte(PARAM_1);
       obj = s.getVarOrDirectWord(PARAM_2);
+      log("walkActorToObject");
       // walk
     },
     panCameraTo: function() {
@@ -1349,7 +1365,7 @@
     lights: function() {
       var a = s.getVarOrDirectByte(PARAM_1), b = s.fetchScriptByte(), c = s.fetchScriptByte();
       if(c == 0)
-        s._scummVars['current_lights'] = a;
+        s.scummVar('current_lights', a);
       else if(c == 1) {
         // flashlight
       }
@@ -1383,6 +1399,7 @@
           nr2 = s.getVarOrDirectByte(PARAM_2),
           dist = s.fetchScriptByte();
 
+      log("walkActorToActor");
     },
     startMusic: function() {
       var sound = s.getVarOrDirectByte(PARAM_1);
@@ -1443,6 +1460,7 @@
       s.getResultPos();
       act = s.getActor(s.getVarOrDirectByte(PARAM_1));
       if(act) s.setResult(act.room);
+      else s.setResult(0);
     },
     soundKludge: function() {
       var items;
@@ -1452,6 +1470,13 @@
     setObjectName: function() {
       var obj = s.getVarOrDirectWord(PARAM_1);
       // s.setObjectName(obj);
+    },
+    findObject: function() {
+      var x, y;
+      s.getResultPos();
+      x = s.getVarOrDirectByte(PARAM_1);
+      y = s.getVarOrDirectByte(PARAM_2);
+      s.setResult(0); // findObject(x, y);
     }
   };
 
@@ -1539,6 +1564,7 @@
     0xe1: s._opcodeCommands.putActor,
     0xe8: s._opcodeCommands.isScriptRunning,
     0xed: s._opcodeCommands.putActorInRoom,
+    0xf5: s._opcodeCommands.findObject,
     0xfa: s._opcodeCommands.verbOps,
     0xff: s._opcodeCommands.drawBox
   };

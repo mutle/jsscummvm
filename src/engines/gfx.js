@@ -614,17 +614,43 @@
     ctx.putImageData(dst, x, top);
   };
 
+  s.convertText = function(text) {
+    var t = this, i, c, s, result = "";
+
+    for(i = 0; i < text.length; i++) {
+      c = text.charCodeAt(i); s = String.fromCharCode(c);
+      if(s == '@') continue;
+      if(c == 255 || c == 254) {
+        i++;
+        c = text.charCodeAt(i); s = String.fromCharCode(c);
+        if(c == 1) result += '\n';
+        else if(c == 2) break;
+      }
+      else if(c == 0) result += '\n';
+      else if(c == 94) result += '&hellip;';
+      else if(c == 96) result += '"';
+      else if(c == 130) result += '&#233;';
+      else if(c == 136) result += '&#234;';
+      else if(c == 250) result += ' ';
+      else result += String.fromCharCode(c);
+    }
+    return result;
+  };
+
   s.renderTexts = function() {
-    var t = this, texts = t._string, i, text,
+    var t = this, texts = t._string, i, text, output,
         ctx = ScummVM.context, width = ScummVM.width, height = ScummVM.height;
     for(i = 0; i < texts.length; i++) {
       text = texts[i];
       if(!text || !text.text || text.text == " ") continue;
+      if(text.x <= 0) text.x = Math.floor(width / 2);
+      if(text.y <= 0) text.y = Math.floor(height * 0.75);
       ctx.font = "sans-serif 16px";
       ctx.textAlign = "center";
       t._charsetColorMap[1] = text.color;
+      output = t.convertText(text.text);
       ctx.fillStyle = t.paletteColor(t._charsetColorMap[text.color]);
-      ctx.fillText(text.text, text.x, text.y, width - text.x);
+      ctx.fillText(output, text.x, text.y, width - text.x);
     }
   }
 

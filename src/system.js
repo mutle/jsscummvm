@@ -90,7 +90,6 @@
       return 3;
     },
     oldDirToNewDir: function(dir) {
-      window.console.log("converting dir "+dir+" -> "+this.new_dir_table[dir]);
       return this.new_dir_table[dir];
     },
     toSimpleDir: function(dirType, dir) {

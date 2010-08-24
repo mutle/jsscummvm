@@ -60,7 +60,7 @@
     t.scummVar("new_room", room);
 
     t.runExitScript();
-    // killScriptsAndResources
+    t.killScriptsAndResources();
     t.clearDrawQueues();
     // hideActors
     t.scummVar("room", room);
@@ -89,7 +89,7 @@
   };
 
   s.setupRoomSubBlocks = function() {
-    var t = this, i, roomptr, rmhd, ptr, rmim, searchptr, id,
+    var t = this, i, roomptr, rmhd, ptr, rmim, searchptr, id, trans,
         MKID_BE = _system.MKID_BE;
 
     t._gfx = {ENCD: 0, EXCD:0, EPAL:0, CLUT:0, PALS:0};
@@ -170,7 +170,7 @@
         break;
     }
 
-    for(i = 1; i < t._objs.length; i++) {
+    for(i = 1; i < t._nums['local_objects'].length; i++) {
       if(t._objs[i].obj_nr && !t._objs[i].fl_object_index)
         t.resetRoomObject(t._objs[i], room);
     }

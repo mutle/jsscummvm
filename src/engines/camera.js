@@ -17,6 +17,32 @@
     camera.dest.x = pos_x;
   };
 
+  s.setCameraFollows = function(a, setCamera) {
+    var t, i, camera = s._camera;
+    if(!a) return;
+    camera.mode = "follow_actor";
+    camera.follows = a.number;
+
+    if(!a.isInCurrentRoom()) {
+      s.startScene(a.room, 0, 0);
+      camera.mode = "follow_actor";
+      camera.cur.x = a.pos.x;
+      s.setCameraAt(camera.cur.x);
+    }
+
+    t = Math.floor(a.pos.x / 8) - s._screenStartStrip;
+
+    if(t < camera.leftTrigger || t > camera.rightTrigger || setCamera == true)
+      s.setCameraAt(a.pos.x, 0);
+
+    for(j = 1; j < s._actors.length; j++) {
+      if(s._actors[j].isInCurrentRoom()) {
+        s._actors[j].needRedraw = true;
+      }
+    }
+    // s.runInventoryScript(0);
+  };
+
   s.moveCamera = function() {
     var t = this, camera = t._camera;
     t.cameraMoved();
@@ -37,4 +63,12 @@
     screenLeft = t._screenStartStrip * 8;
     t._virtscreens[0].xstart = screenLeft;
   };
+
+  s.actorFollowCamera = function(act) {
+    var camera = s._camera, old = camera.follows;
+    s.setCameraFollows(act);
+    if(camera.follows != old)
+      ; // s.runInventoryScript(0);
+    camera.movingToActor = false;
+  }
 }());

@@ -46,4 +46,10 @@ function assert(condition) {
     t.context.fillRect(0,0,this.width,this.height);
   };
 
+  window.document.addEventListener("keypress", function(e) {
+    var c = String.fromCharCode(e.keyCode)
+    ScummVM.engine._lastKeyHit = "ESC";
+    return true;
+  });
+
 }());

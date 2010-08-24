@@ -241,6 +241,19 @@
     }
   };
 
+  s.killScriptsAndResources = function() {
+    var i, slot, vm = s._vm;
+    for(i = 0; i < vm.slot.length; i++) {
+      slot = vm.slot[i];
+      if(slot.where == "room" || slot.where == "local") { // || flobject
+        if(slot.cutSceneOverride) {
+          slot.cutSceneOverride = 0;
+        }
+        slot.status = "dead";
+      }
+    }
+  };
+
   s.decreaseScriptDelay = function(amount) {
     var t = this, slots = t._vm.slot, i;
     for(i = 0; i < slots.length; i++) {
@@ -338,6 +351,8 @@
       case "room":
         if(slot.ptr) t._scriptOrgPointer = slot.ptr;
         else t._scriptOrgPointer = t.getResourceAddress("room", t._roomResource);
+        if(!t._scriptOrgPointer)
+          log("FAIL!");
         t._lastCodePointer = t._scriptOrgPointer.newRelativeStream();
       break;
       default:
@@ -502,6 +517,16 @@
     return -1;
   };
 
+  s.getOwner = function(obj) {
+    var t = this;
+    return t._objectOwnerTable[obj];
+  };
+
+  s.putOwner = function(obj, owner) {
+    var t = this;
+    t._objectOwnerTable[obj] = owner;
+  };
+
   s.getState = function(obj) {
     var t = this;
     return t._objectStateTable[obj];
@@ -586,7 +611,7 @@
       varId &= 0xFFF;
       return t._vm.localvar[t._currentScript][varId];
     }
-    return -1
+    return -1;
   };
 
   s.writeVar = function(varId, value) {
@@ -608,8 +633,8 @@
   };
 
   s.getVar = function() {
-    var t = this;
-    return t.readVar(t.fetchScriptWord());
+    var t = this, varId = t.fetchScriptWord();
+    return t.readVar(varId);
   }
 
   s.getVarOrDirectByte = function(mask) {
@@ -717,7 +742,7 @@
   s.beginOverride = function() {
     var t = this, vm = t._vm, idx = vm.cutSceneStackPointer;
     vm.cutScenePtr[idx] = t._scriptPointer.offset;
-    vm.cutSceneScript[idx] = t._scriptPointer;
+    vm.cutSceneScript[idx] = t._currentScript;
     log("begin override");
 
     t.fetchScriptByte();
@@ -765,6 +790,24 @@
 
     if(t.scummVar("cutscene_end_script"))
       t.runScript(t.scummVar("cutscene_end_script"), 0, 0, args);
+  };
+
+  s.abortCutscene = function() {
+    var t = this, vm = t._vm, slot, args = [], idx = vm.cutSceneStackPointer, offs = vm.cutScenePtr[idx];
+
+    if(offs) {
+      log("aborting cutscene "+idx+" at "+offs+" script "+vm.cutSceneScript[idx]);
+      slot = vm.slot[vm.cutSceneScript[idx]];
+      slot.offs = offs;
+      slot.status = "running";
+      slot.freezeCount = 0;
+      if(slot.cutSceneOverride > 0)
+        slot.cutSceneOverride--;
+
+      t.scummVar("override", 1);
+      vm.cutScenePtr[idx] = 0
+    }
+    log("aborted cutscene");
   };
 
   s.decodeParseString = function() {
@@ -836,6 +879,12 @@
 
       s.runScript(script, (op & 0x20) != 0, (op & 0x40) != 0, data);
     },
+    startObject: function() {
+      var obj = s.getVarOrDirectWord(PARAM_1), script = s.getVarOrDirectByte(PARAM_2), data;
+
+      data = s.getWordVararg();
+      // s.runObjectScript(obj, script, 0, 0, data);
+    },
     resourceRoutines: function() {
      var resType = ["script", "sound", "costume", "room"], resid = 0;
      s._opcode = s.fetchScriptByte();
@@ -857,6 +906,10 @@
        case 10: // lock sound
        break;
        case 11: // lock costume
+       break;
+       case 13: // unlock script
+       break;
+       case 15: // unlock costume
        break;
        case 17:
        break;
@@ -1211,6 +1264,11 @@
           case 6: // stand animation
             act.standFrame = s.getVarOrDirectByte(PARAM_1);
           break;
+          case 7: // animation
+            s.getVarOrDirectByte(PARAM_1);
+            s.getVarOrDirectByte(PARAM_2);
+            s.getVarOrDirectByte(PARAM_3);
+          break;
           case 8: // default
             act.initActor(0);
           break;
@@ -1243,6 +1301,7 @@
           break;
           case 0:
           case 3: // sound
+          case 15:
           case 12: // talk color
           case 16: // actor width
             //unimplemented
@@ -1271,8 +1330,8 @@
       s.decodeParseString();
     },
     putActorInRoom: function() {
-      var act = s.getActor(s.getVarOrDirectByte(PARAM_1)), room = s.getVarOrDirectByte(PARAM_2);
-      if(!act) return;
+      var a = s.getVarOrDirectByte(PARAM_1), act = s.getActor(a), room = s.getVarOrDirectByte(PARAM_2);
+      if(!act) { window.console.log("put actor "+a+" into room "+room+" failed"); return; }
       act.room = room;
       act.showActor();
       if(!room)
@@ -1283,9 +1342,9 @@
       if(act) act.putActor(x, y);
     },
     actorFollowCamera: function() {
-      var act = s.getVarOrDirectByte(PARAM_1);
-      log("actorFollowCamera "+act);
-      // actorFollowCamera(act);
+      var a = s.getVarOrDirectByte(PARAM_1), act = s.getActor(a);
+      window.console.log(a);
+      s.actorFollowCamera(act);
     },
     animateActor: function() {
       var act = s.getActor(s.getVarOrDirectByte(PARAM_1)), anim = s.getVarOrDirectByte(PARAM_2);
@@ -1302,7 +1361,7 @@
     isScriptRunning: function() {
       s.getResultPos();
       var script = s.getVarOrDirectByte(PARAM_1), running = s.isScriptRunning(script);
-      s.setResult(running);
+      s.setResult(running ? 1 : 0);
     },
     setCameraAt: function() {
       s.setCameraAtEx(s.getVarOrDirectWord(PARAM_1));
@@ -1362,6 +1421,17 @@
       var a = s.getVarOrDirectWord(PARAM_1);
       // panCameraTo(a, 0);
     },
+    pickupObject: function() {
+      var obj = s.getVarOrDirectWord(PARAM_1), room = s.getVarOrDirectByte(PARAM_2);
+      if(room == 0) room = s._roomResource;
+      // addObjectToInventory
+      s.putOwner(obj, s.scummVar("ego"));
+      // putClass untouchable
+      s.putState(obj, 1);
+      // object dirty
+      s.clearDrawObjectQueue();
+      // s.runInventoryScript(1);
+    },
     lights: function() {
       var a = s.getVarOrDirectByte(PARAM_1), b = s.fetchScriptByte(), c = s.fetchScriptByte();
       if(c == 0)
@@ -1394,6 +1464,13 @@
       s._vm.slot[s._currentScript].status = "paused";
       s._opcodeCommands.breakHere();
     },
+    walkActorTo: function() {
+      var nr = s.getVarOrDirectByte(PARAM_1),
+          x = s.getVarOrDirectWord(PARAM_2),
+          y = s.getVarOrDirectWord(PARAM_3);
+
+      log("startWalkActor");
+    },
     walkActorToActor: function() {
       var nr = s.getVarOrDirectByte(PARAM_1),
           nr2 = s.getVarOrDirectByte(PARAM_2),
@@ -1409,6 +1486,10 @@
         s.beginOverride();
       else
         s.endOverride();
+    },
+    getObjectOwner: function() {
+      s.getResultPos();
+      s.setResult(s.getOwner(s.getVarOrDirectWord(PARAM_1)));
     },
     getObjectState: function() {
       s.getResultPos();
@@ -1430,6 +1511,17 @@
       a = s.getVarOrDirectByte(PARAM_1);
       b = s.getVarOrDirectByte(PARAM_2);
       c = s.getVarOrDirectByte(PARAM_3);
+    },
+    setClass: function() {
+      var obj = s.getVarOrDirectWord(PARAM_1), newClass;
+
+      while((s._opcode = s.fetchScriptByte()) != 0xFF) {
+        newClass = s.getVarOrDirectWord(PARAM_1);
+        if(newClass == 0) {
+          // all class data
+        } else {
+        }
+      }
     },
     add: function() {
       var a;
@@ -1477,6 +1569,12 @@
       x = s.getVarOrDirectByte(PARAM_1);
       y = s.getVarOrDirectByte(PARAM_2);
       s.setResult(0); // findObject(x, y);
+    },
+    actorFromPos: function() {
+      s.getResultPos();
+      x = s.getVarOrDirectByte(PARAM_1);
+      y = s.getVarOrDirectByte(PARAM_2);
+      s.setResult(0); // findObject(x, y);
     }
   };
 
@@ -1494,6 +1592,8 @@
     0x0b: s._opcodeCommands.getVerbEntryPoint,
     0x0c: s._opcodeCommands.resourceRoutines,
     0x0f: s._opcodeCommands.getObjectState,
+    0x10: s._opcodeCommands.getObjectOwner,
+    0x11: s._opcodeCommands.animateActor,
     0x12: s._opcodeCommands.panCameraTo,
     0x13: s._opcodeCommands.actorOps,
     0x14: s._opcodeCommands.print,
@@ -1504,13 +1604,19 @@
     0x1a: s._opcodeCommands.move,
     0x1c: s._opcodeCommands.startSound,
     0x20: s._opcodeCommands.unimplementedOpcode,
+    0x25: s._opcodeCommands.pickupObject,
+    0x29: s._opcodeCommands.setOwnerOf,
+    0x2a: s._opcodeCommands.startScript,
     0x2c: s._opcodeCommands.cursorCommand,
+    0x2d: s._opcodeCommands.putActorInRoom,
     0x2e: s._opcodeCommands.delay,
     0x26: s._opcodeCommands.setVarRange,
     0x27: s._opcodeCommands.stringOps,
     0x28: s._opcodeCommands.equalZero,
     0x32: s._opcodeCommands.setCameraAt,
     0x33: s._opcodeCommands.roomOps,
+    0x37: s._opcodeCommands.startObject,
+    0x38: s._opcodeCommands.isLessEqual,
     0x3a: s._opcodeCommands.subtract,
     0x3c: s._opcodeCommands.stopSound,
     0x40: s._opcodeCommands.cutscene,
@@ -1528,6 +1634,7 @@
     0x56: s._opcodeCommands.getActorMoving,
     0x58: s._opcodeCommands.beginOverride,
     0x5a: s._opcodeCommands.add,
+    0x5d: s._opcodeCommands.setClass,
     0x60: s._opcodeCommands.freezeScripts,
     0x62: s._opcodeCommands.stopScript,
     0x63: s._opcodeCommands.getActorFacing,
@@ -1544,12 +1651,14 @@
     0x80: s._opcodeCommands.breakHere,
     0x81: s._opcodeCommands.putActor,
     0x83: s._opcodeCommands.getActorRoom,
+    0x88: s._opcodeCommands.isNotEqual,
     0x8a: s._opcodeCommands.startScript,
     0x91: s._opcodeCommands.animateActor,
     0x93: s._opcodeCommands.actorOps,
     0x96: s._opcodeCommands.getRandomNr,
     0x98: s._opcodeCommands.systemOps,
     0x9a: s._opcodeCommands.move,
+    0x9e: s._opcodeCommands.walkActorTo,
     0xa0: s._opcodeCommands.stopObjectCode,
     0xa8: s._opcodeCommands.notEqualZero,
     0xab: s._opcodeCommands.saveRestoreVerbs,
@@ -1561,6 +1670,7 @@
     0xcc: s._opcodeCommands.pseudoRoom,
     0xd1: s._opcodeCommands.animateActor,
     0xd2: s._opcodeCommands.actorFollowCamera,
+    0xd5: s._opcodeCommands.actorFromPos,
     0xe1: s._opcodeCommands.putActor,
     0xe8: s._opcodeCommands.isScriptRunning,
     0xed: s._opcodeCommands.putActorInRoom,

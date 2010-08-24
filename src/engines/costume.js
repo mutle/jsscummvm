@@ -311,7 +311,7 @@
     t.setDirection = function(dir) {
       var amask, i, vald;
       if(t.facing == dir) return;
-      t.facing = _system.normalizeAngle(direction);
+      t.facing = _system.normalizeAngle(dir);
       if(t.costume == 0) return;
 
       amask = 0x8000;
@@ -832,7 +832,7 @@
 
   s.isValidActor = function(id) {
     var t = this;
-    return id >= 0 && id < t._actors.length && t._actors[id].number == id;
+    return id >= 0 && id < t._actors.length && t._actors[id] && t._actors[id].number == id;
   };
   s.getActor = function(id) {
     var t = this;

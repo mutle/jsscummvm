@@ -69,6 +69,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _charsetColorMap: [],
     _actors: [],
     _sortedActors: [],
+    _lastKeyHit: "",
     _camera: {cur: Point(0,0), dest: Point(0,0), accel: Point(0,0), last: Point(0,0), follows: 0, mode: "normal", movingToActor:false},
     init: function(game) {
       this._game = game;
@@ -135,7 +136,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
 
       t.decreaseScriptDelay(delta);
 
-      // this.processInput();
+      this.processInput();
       t.updateScummVars();
       if(t._completeScreenRedraw) {
         // Draw Verbs
@@ -184,6 +185,13 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
       var t = ScummVM.engines.SCUMM;
       if(t._shouldQuit) return true;
       return false;
+    },
+    processInput: function() {
+      var t = this;
+      if(t._lastKeyHit == "ESC") {
+        t.abortCutscene();
+      }
+      t._lastKeyHit = "";
     },
     setupScumm: function() {
       var t = this, res = t._res;

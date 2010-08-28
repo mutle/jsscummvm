@@ -170,7 +170,8 @@
         break;
     }
 
-    for(i = 1; i < t._nums['local_objects'].length; i++) {
+    for(i = 1; i < t._nums['local_objects']; i++) {
+    // for(i = 1; i < t._objs.length; i++) {
       if(t._objs[i].obj_nr && !t._objs[i].fl_object_index)
         t.resetRoomObject(t._objs[i], room);
     }

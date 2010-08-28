@@ -627,11 +627,11 @@
         else if(c == 2) break;
       }
       else if(c == 0) result += '\n';
-      else if(c == 94) result += '&hellip;';
+      else if(c == 94) result += '\u2026';
       else if(c == 96) result += '"';
-      else if(c == 130) result += '&#233;';
-      else if(c == 136) result += '&#234;';
-      else if(c == 250) result += ' ';
+      else if(c == 130) result += '\u00E9';
+      else if(c == 136) result += '\u00EA';
+      else if(c == 250) result += ' '; // nbsp
       else result += String.fromCharCode(c);
     }
     return result;
@@ -645,12 +645,18 @@
       if(!text || !text.text || text.text == " ") continue;
       if(text.x <= 0) text.x = Math.floor(width / 2);
       if(text.y <= 0) text.y = Math.floor(height * 0.75);
-      ctx.font = "sans-serif 16px";
+      ctx.font = "16px Helvetica";
       ctx.textAlign = "center";
       t._charsetColorMap[1] = text.color;
-      output = t.convertText(text.text);
       ctx.fillStyle = t.paletteColor(t._charsetColorMap[text.color]);
-      ctx.fillText(output, text.x, text.y, width - text.x);
+      output = t.convertText(text.text).split("\n");
+      var y = text.y;
+      for(var j = 0; j < output.length; j++) {
+        if(ctx.measureText(output[j]).width > width) {
+        }
+        ctx.fillText(output[j], text.x, y, width - text.x);
+        y += 20;
+      }
     }
   }
 

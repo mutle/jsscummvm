@@ -90,9 +90,8 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     launch: function() {
       var t = this;
       if(t._files.length > 1) {
-        var diff = 0;
+        var diff = 0, delta = 0;
 
-        log("All files loaded");
         t._file = t.indexFile();
         t._engineStartTime = _system.getMillis() / 1000;
         t._res = new t.ResourceManager(t);
@@ -103,11 +102,10 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
         t.resetScummVars();
         t.runBootscript();
 
-        log("booted");
         t._timer = window.setInterval(function() {
           t.scummVar("timer", Math.floor(diff * 60 / 1000));
           t.scummVar("timer_total", t.scummVar("timer_total") + Math.floor(diff * 60 / 1000));
-          var delta = t.scummVar("timer_next");
+          delta = t.scummVar("timer_next");
           if(delta < 1)
             delta = 1;
 
@@ -118,7 +116,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
           });
 
 
-        }, 1000 / 30);
+        }, 1000 / 12);
       }
     },
     waitForTimer: function(ticks, callback) {

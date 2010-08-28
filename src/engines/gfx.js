@@ -637,23 +637,35 @@
     return result;
   };
 
+  s.drawString = function(slot, msg) {
+    var text = s._string[slot];
+    text.text = msg;
+  };
+
   s.renderTexts = function() {
     var t = this, texts = t._string, i, text, output,
         ctx = ScummVM.context, width = ScummVM.width, height = ScummVM.height;
     for(i = 0; i < texts.length; i++) {
       text = texts[i];
       if(!text || !text.text || text.text == " ") continue;
-      if(text.x <= 0) text.x = Math.floor(width / 2);
-      if(text.y <= 0) text.y = Math.floor(height * 0.75);
-      ctx.font = "16px Helvetica";
-      ctx.textAlign = "center";
+      if(i == 0) {
+        ctx.font = "12px Helvetica";
+        ctx.textAlign = "center";
+      } else {
+        ctx.font = "16px Helvetica";
+        ctx.textAlign = "center";
+        if(text.x <= 0) text.x = Math.floor(width / 2);
+        if(text.y <= 0) text.y = Math.floor(height * 0.75);
+      }
       t._charsetColorMap[1] = text.color;
       ctx.fillStyle = t.paletteColor(t._charsetColorMap[text.color]);
+      ctx.strokeStyle = "#000";
       output = t.convertText(text.text).split("\n");
       var y = text.y;
       for(var j = 0; j < output.length; j++) {
         if(ctx.measureText(output[j]).width > width) {
         }
+        // ctx.strokeText(output[j], text.x, y, width - text.x);
         ctx.fillText(output[j], text.x, y, width - text.x);
         y += 20;
       }

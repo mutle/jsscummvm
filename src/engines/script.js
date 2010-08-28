@@ -57,13 +57,13 @@
   }
 
   s.runBootscript = function() {
-     var t = this, i;
-     args = [];
-     for(i = 0; i < 16; i++) {
-       args[i] = 0;
-     }
-     args[0] = t._bootParam;
-     t.runScript(1, 0, 0, args);
+    var t = this, i;
+    args = [];
+    for(i = 0; i < 16; i++) {
+      args[i] = 0;
+    }
+    args[0] = t._bootParam;
+    t.runScript(1, 0, 0, args);
   };
 
   var slot_status = ["dead", "paused", "running"];
@@ -417,7 +417,7 @@
       keypress: 0,
       ego: 1,
       camera_pos_x: 2,
-      camera_pos_y: 3,
+      have_msg: 3,
       room: 4,
       override: 5,
       machine_speed: 6,
@@ -500,7 +500,7 @@
     t.scummVar("charinc", 4);
     t.scummVar("machine_speed", 0xFF);
 
-    // t.setTalkingActor(0);
+    t.setTalkingActor(0);
 
     // Setup Light
     t._scummVars[74] = 1225; // Monkey1 specific
@@ -515,6 +515,13 @@
         return i;
     }
     return -1;
+  };
+
+  s.getObjectXYPos = function(object) {
+    var idx = s.getObjectIndex(object), od = s._objs[idx], pos = _system.Point(od.walk_x, od.walk_y);
+    pos.dir = _system.oldDirToNewDir(od.actordir & 3);
+
+    return pos;
   };
 
   s.getOwner = function(obj) {
@@ -735,8 +742,18 @@
   };
 
   s.printString = function(slot, source, len) {
-    var t = this, msg = source.readString(len);
-    return s.convertMessageToString(msg);
+    var t = this, msg = s.convertMessageToString(source.readString(len));
+    switch(slot) {
+      case 0:
+        if(!s._actorToPrintStrFor) s._actorToPrintStrFor = s.scummVar("ego");
+        s.actorTalk(msg);
+      break;
+      case 1:
+        drawString(1, msg);
+      break;
+      default:
+        log("unimplemented string slot "+slot);
+    }
   };
 
   s.beginOverride = function() {
@@ -778,6 +795,7 @@
 
     if(slot.cutsceneOverride > 0)
       slot.cutsceneOverride--;
+    for(var i = 0; i < 16; i++) { args[i] = 0; }
     args[0] = vm.cutSceneData[vm.cutSceneStackPointer];
     t.scummVar("override", 0);
     log("end cutscene");
@@ -788,8 +806,10 @@
     vm.cutScenePtr[vm.cutSceneStackPointer] = 0;
     vm.cutSceneStackPointer--;
 
-    if(t.scummVar("cutscene_end_script"))
+    if(t.scummVar("cutscene_end_script")) {
+      log("running cutscene_end_script "+t.scummVar("cutscene_end_script"));
       t.runScript(t.scummVar("cutscene_end_script"), 0, 0, args);
+    }
   };
 
   s.abortCutscene = function() {
@@ -827,7 +847,7 @@
       textSlot = 0;
     break;
     }
-    t._string[textSlot] = {x: 0, y: 0, right: 0, align: "left", color: 0, text:"", overhead: true, wrapping: false};
+    t._string[textSlot] = {x: 0, y: 0, right: 0, align: "left", color: 0, text:"", overhead: true, wrapping: false, no_talk_anim: true};
     text = t._string[textSlot];
     while((t._opcode = t.fetchScriptByte()) != 0xFF) {
       switch(t._opcode & 0x0F) {
@@ -855,7 +875,7 @@
         case 15: // textstring
           len = t.resStrLen();
           var old_off = t._scriptPointer.offset;
-          text.text = t.printString(textSlot, t._scriptPointer, len);
+          t.printString(textSlot, t._scriptPointer, len);
           t._scriptPointer.seek(1);
         return;
         default:
@@ -1154,6 +1174,32 @@
         }
       }
     },
+    wait: function() {
+      var oldoffset = s._scriptPointer.offset - 1;
+
+      s._opcode = s.fetchScriptByte();
+      switch(s._opcode & 0x1F) {
+        case 1: // wait for actor
+          var a = s.getActor(s.getVarOrDirectByte(PARAM_1));
+          if(a && a.moving) {
+            // log("wait for actor "+a.number);
+            break;
+          }
+          // log("done waiting for actor "+a.number);
+          return;
+        break;
+        case 2: // wait for message
+          if(s.scummVar("have_msg"))
+            break;
+          return;
+        break;
+        default:
+          log("unknown wait opcode 0x"+(s._opcode & 0x1F));
+      }
+
+      s._scriptPointer.offset = oldoffset;
+      s._opcodeCommands.breakHere();
+    },
     drawObject: function() {
       var state = 1, obj, idx, i, xpos = 255, ypos = 255, x, y, w, h, od;
 
@@ -1270,7 +1316,7 @@
             s.getVarOrDirectByte(PARAM_3);
           break;
           case 8: // default
-            act.initActor(0);
+            act.initActor(-1); //0);
           break;
           case 11: // palette
             i = s.getVarOrDirectByte(PARAM_1);
@@ -1279,6 +1325,7 @@
           break;
           case 13: // actor name
             s.loadPtrToResource("actor_name", a);
+            log("loaded actor "+a+": "+s.getResourceAddress("actor_name", a).readString());
           break;
           case 17: // actor scale
             i = s.getVarOrDirectByte(PARAM_1);
@@ -1329,6 +1376,10 @@
       s._actorToPrintStrFor = s.getVarOrDirectByte(PARAM_1);
       s.decodeParseString();
     },
+    printEgo: function() {
+      s._actorToPrintStrFor = s.scummVar("ego");
+      s.decodeParseString();
+    },
     putActorInRoom: function() {
       var a = s.getVarOrDirectByte(PARAM_1), act = s.getActor(a), room = s.getVarOrDirectByte(PARAM_2);
       if(!act) { window.console.log("put actor "+a+" into room "+room+" failed"); return; }
@@ -1377,9 +1428,8 @@
       // stopSound
     },
     faceActor: function() {
-      var act = s.getVarOrDirectByte(PARAM_1), obj = s.getVarOrDirectWord(PARAM_2);
-      log("faceActor");
-      // a.faceToObject(obj)
+      var act = s.getActor(s.getVarOrDirectByte(PARAM_1)), obj = s.getVarOrDirectWord(PARAM_2);
+      act.faceToObject(obj);
     },
     systemOps: function() {
       var subOp = s.fetchScriptByte();
@@ -1409,13 +1459,6 @@
       b = s.getVarOrDirectWord(PARAM_2);
       // getObjActToObjActDist
       s.setResult(1);
-    },
-    walkActorToObject: function() {
-      var a, obj;
-      a = s.getVarOrDirectByte(PARAM_1);
-      obj = s.getVarOrDirectWord(PARAM_2);
-      log("walkActorToObject");
-      // walk
     },
     panCameraTo: function() {
       var a = s.getVarOrDirectWord(PARAM_1);
@@ -1465,11 +1508,12 @@
       s._opcodeCommands.breakHere();
     },
     walkActorTo: function() {
-      var nr = s.getVarOrDirectByte(PARAM_1),
+      var a = s.getVarOrDirectByte(PARAM_1),
+          act = s.getActor(a),
           x = s.getVarOrDirectWord(PARAM_2),
           y = s.getVarOrDirectWord(PARAM_3);
 
-      log("startWalkActor");
+      act.startWalkActor(x, y, -1);
     },
     walkActorToActor: function() {
       var nr = s.getVarOrDirectByte(PARAM_1),
@@ -1477,6 +1521,14 @@
           dist = s.fetchScriptByte();
 
       log("walkActorToActor");
+    },
+    walkActorToObject: function() {
+      var a, obj, act, pos;
+      a = s.getVarOrDirectByte(PARAM_1);
+      obj = s.getVarOrDirectWord(PARAM_2);
+      act = s.getActor(a);
+      pos = s.getObjectXYPos(obj);
+      act.startWalkActor(pos.x, pos.y, pos.dir);
     },
     startMusic: function() {
       var sound = s.getVarOrDirectByte(PARAM_1);
@@ -1624,6 +1676,7 @@
     0x44: s._opcodeCommands.isLess,
     0x46: s._opcodeCommands.increment,
     0x48: s._opcodeCommands.isEqual,
+    0x49: s._opcodeCommands.faceActor,
     0x4a: s._opcodeCommands.startScript,
     0x4c: s._opcodeCommands.soundKludge,
     0x4d: s._opcodeCommands.walkActorToActor,
@@ -1652,6 +1705,7 @@
     0x81: s._opcodeCommands.putActor,
     0x83: s._opcodeCommands.getActorRoom,
     0x88: s._opcodeCommands.isNotEqual,
+    0x89: s._opcodeCommands.faceActor,
     0x8a: s._opcodeCommands.startScript,
     0x91: s._opcodeCommands.animateActor,
     0x93: s._opcodeCommands.actorOps,
@@ -1664,6 +1718,8 @@
     0xab: s._opcodeCommands.saveRestoreVerbs,
     0xac: s._opcodeCommands.expression,
     0xad: s._opcodeCommands.putActorInRoom,
+    0xae: s._opcodeCommands.wait,
+    0xb6: s._opcodeCommands.walkActorToObject,
     0xc0: s._opcodeCommands.endCutscene,
     0xc1: s._opcodeCommands.putActor,
     0xc4: s._opcodeCommands.isLess,
@@ -1671,6 +1727,7 @@
     0xd1: s._opcodeCommands.animateActor,
     0xd2: s._opcodeCommands.actorFollowCamera,
     0xd5: s._opcodeCommands.actorFromPos,
+    0xd8: s._opcodeCommands.printEgo,
     0xe1: s._opcodeCommands.putActor,
     0xe8: s._opcodeCommands.isScriptRunning,
     0xed: s._opcodeCommands.putActorInRoom,

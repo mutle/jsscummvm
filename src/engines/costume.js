@@ -95,8 +95,11 @@
     t.elevation = 0;
     t.width = 24;
     t.talkColor = 15;
+  t.talkPosX = 0;
+    t.talkPosY = -80;
     t.boxscale = t.scaley = t.scalex = 0xFF;
     t.charset = 0;
+    t.targetFacing = 0;
     t.layer = 0;
     t.animProgress = 0;
     t.animSpeed = 0;
@@ -120,10 +123,65 @@
 
     t.initActor = function(mode) {
       if(mode == -1) { // Reset
+        t.top = t.bottom = 0;
+        t.needRedraw = false;
+        t.needBgReset = false;
+        t.costumeNeedsInit = false;
+        t.visible = false;
+        t.flip = false;
+        t.speedx = 8;
+        t.speedy = 2;
+        t.frame = 0;
+        t.walkbox = 0;
+        t.animProgress = 0;
+        t.cost = new s.CostumeData();
+        for(var i = 0; i < 256; i++) {
+          t.palette[i] = 0;
+        }
       }
+
+      if(mode == 1 || mode == -1) {
+        t.costume = 0;
+        t.room = 0;
+        t.pos = _system.Point(0, 0);
+        t.facing = 180;
+      } else if(mode == 2) {
+        t.facing = 180;
+      }
+
+      t.elevation = 0;
+      t.width = 24;
+      t.talkColor = 15;
+      t.talkPosX = 0;
+      t.talkPosY = -80;
+      t.boxscale = t.scaley = t.scalex = 0xFF;
+      t.charset = 0;
+      t.targetFacing = t.facing;
+      t.layer = 0;
 
       t.stopActorMoving();
       t.setActorWalkSpeed(8, 2);
+
+      t.animSpeed = 0;
+
+      t.ignoreBoxes = false;
+      t.forceClip = 0;
+      t.ignoreTurns = false;
+
+      t.talkFrequency = 256;
+      t.talkPan = 64;
+      t.talkVolume = 127;
+
+      t.initFrame = 1;
+      t.walkFrame = 2;
+      t.standFrame = 3;
+      t.talksStartFrame = 4;
+      t.talkStopFrame = 5;
+
+      t.walkScript = 0;
+      t.talkScript = 0;
+
+      t.walkdata = {dest: _system.Point(0, 0), destbox: 0, destdir: 0, cur: _system.Point(0, 0), curbox: 0, next: _system.Point(0, 0), point3: _system.Point(32000, 0), deltaXFactor: 0, deltaYFactor: 0, xfrac: 0, yfrac: 0};
     };
 
     t.classChanged = function(cls, value) {
@@ -159,7 +217,7 @@
       var bcr = s.costumeRenderer;
       if(t.costume == 0) return;
       if(!hitTestMode) {
-        // TODO DOn't draw actor for every frame
+        // TODO Don't draw actor for every frame
         // if(!t.needRedraw) return;
         t.needRedraw = false;
       }
@@ -186,6 +244,8 @@
       bcr.setCostume(t.costume);
       bcr.setPalette(t.palette);
       bcr.setFacing(t);
+
+      // log("drawing costume "+t.costume+" for actor "+t.number+" at "+t.pos.x+"/"+t.pos.y);
 
       if(t.forceClip)
         bcr.zbuf = t.forceClip;
@@ -263,6 +323,20 @@
         t.frame = f;
       }
     };
+    t.runActorTalkScript = function(f) {
+      var script = t.talkScript, args;
+      if(!s.getTalkingActor() || t.room != s._currentRoom || t.frame == f) return;
+
+      if(script) {
+        for(vari = 0; i < 16; i++) {
+          args[i] = 0;
+        }
+        args = [f, t.number];
+        log("running talk script "+script);
+        s.runScript(script, 1, 0, args);
+      }
+
+    };
     t.stopActorMoving = function() {
       t.moving = 0;
     };
@@ -273,12 +347,75 @@
       t.speedy = newSpeedY;
 
       if(t.moving) {
-        log("moving");
+        t.calcMovementFactor(t.walkdata.next);
       }
+    };
+    t.calcMovementFactor = function(next) {
+      var diffX, diffY, deltaXFactor, deltaYFactor;
+
+      if(t.pos.x == next.x && t.pos.y == next.y) return 0;
+
+      t.walkdata.cur = t.pos;
+      t.walkdata.next = next;
+
+      if(t.targetFacing != t.facing) t.facing = t.targetFacing;
+
+      t.actorWalkStep();
+    };
+    t.actorWalkStep = function() {
+      var tmpX, tmpY, distX, distY, nextFacing;
+      t.needRedraw = true;
+
+      distX = Math.abs(t.walkdata.dest.x - t.pos.x);
+      distY = Math.abs(t.walkdata.dest.y - t.pos.y);
+
+      // log("walk to "+t.walkdata.dest.x+"/"+t.walkdata.dest.y);
+
+      // log("before step "+t.pos.x+"/"+t.pos.y+" dist "+distX+"/"+distY);
+
+      if(distX < t.speedx) t.pos.x = t.walkdata.dest.x;
+      else if(t.pos.x > t.walkdata.dest.x) t.pos.x -= t.speedx;
+      else if(t.pos.x < t.walkdata.dest.x) t.pos.x += t.speedx;
+
+      if(distY < t.speedy) t.pos.y = t.walkdata.dest.y;
+      else if(t.pos.y > t.walkdata.dest.y) t.pos.y -= t.speedy;
+      else if(t.pos.y < t.walkdata.dest.y) t.pos.y += t.speedy;
+
+      // log("after step "+t.pos.x+"/"+t.pos.y);
+
+      if(t.pos.x == t.walkdata.dest.x && t.pos.y == t.walkdata.dest.y) {
+        t.moving = false;
+      }
+    };
+    t.startWalkActor = function(destX, destY, dir) {
+      var abr = t.adjustXYToBeInBox(destX, destY);
+
+      if(!t.isInCurrentRoom()) {
+        t.pos.x = abr.x;
+        t.pos.y = abr.y;
+        if(!t.ignoreTurns && dir != -1)
+          t._facing = dir;
+        return;
+      }
+
+      if(t.ignoreBoxes) {
+        abr.box = "invalid";
+        t.walkbox = "invalid";
+      } else {
+      }
+
+      t.walkdata.dest.x = abr.x;
+      t.walkdata.dest.y = abr.y;
+      t.walkdata.destbox = abr.box;
+      t.walkdata.destdir = dir;
+      t.moving = true;
+      t.walkdata.curbox = t.walkbox;
+
+      log("start walk "+destX+"/"+destY);
     };
     t.walkActor = function() {
       if(!t.moving) return;
-      log("walk actor");
+      t.actorWalkStep();
     };
     t.setActorCostume = function(c) {
       var i;
@@ -322,8 +459,18 @@
       }
       t.needRedraw = true;
     };
+    t.faceToObject = function(obj) {
+      var x2, y2, dir;
+
+      if(!t.isInCurrentRoom()) return;
+      dir = 90;
+      t.turnToDirection(dir);
+    };
     t.turnToDirection = function(newdir) {
-      log("turnToDirection");
+      if(newdir == -1 || t.ignoreTurns) return;
+
+      // t.moving = MF_TURN;
+      // t.targetFacing = newdir;
     };
 
     t.showActor = function() {
@@ -345,6 +492,14 @@
       t.needRedraw = false;
       t.needBgReset = true;
     };
+    t.adjustXYToBeInBox = function(dstX, dstY) {
+      var abr = {x: 0, y: 0, box: "invalid"};
+
+      abr.x = dstX;
+      abr.y = dstY;
+
+      return abr;
+    }
 
     t.initActor(-1);
   };
@@ -522,6 +677,7 @@
       t.mirror = _system.newDirToOldDir(actor.facing) != 0 || t.loader.mirror;
     };
     t.setCostume = function(costume, shadow) {
+      t.loader.loadCostume(costume);
     };
     t.drawCostume = function(vs, numStrips, a, drawToBackBuf) {
       var i, result = 0
@@ -834,6 +990,7 @@
     var t = this;
     return id >= 0 && id < t._actors.length && t._actors[id] && t._actors[id].number == id;
   };
+
   s.getActor = function(id) {
     var t = this;
     if(id == 0) return null;
@@ -853,26 +1010,30 @@
     if(!numactors) return;
 
     // Sort actors
-    for(j = 0; i < numactors; ++j) {
+    for(j = 0; j < numactors; ++j) {
       for(i = 0; i < numactors; ++i) {
         var sc_actor1 = t._sortedActors[i].pos.y - t._sortedActors[j].layer * 200;
         var sc_actor2 = t._sortedActors[j].pos.y - t._sortedActors[i].layer * 200;
         if(sc_actor1 < sc_actor2) {
           tmp = t._sortedActors[i];
-          t._sortedActors[j] = t._sortedActors[i];
+          t._sortedActors[i] = t._sortedActors[j];
           t._sortedActors[i] = tmp;
         }
       }
     }
 
     // Draw actors
+    // var actors = "";
     for(i = 0; i < numactors; ++i) {
       actor = t._sortedActors[i];
+      // actors += actor.number;
+      // actors += " ";
       if(actor.costume) {
         actor.drawActorCostume();
         actor.animateCostume();
       }
     }
+    // window.console.log(actors);
   };
 
   s.showActors = function() {
@@ -907,6 +1068,83 @@
       t._actors[j].needBgReset = false;
     }
   }
+
+  s.getTalkingActor = function() {
+    return s.scummVar("talk_actor");
+  }
+
+  s.setTalkingActor = function(i) {
+    var x, y, text = s._string[0];
+
+    if(i == 255) {
+      text.x = 0;
+      text.y = 0;
+      text.text = "";
+      // clearFocusRectangle
+    } else if(i > 0) {
+      text.x = s._actors[i].pos.x - (s._camera.cur.x - (s._screenWidth / 2));
+      text.y = s._actors[i].top - (s._camera.cur.y - (s._screenHeight / 2));
+      // setFocusRectangle
+    }
+    s.scummVar("talk_actor", i);
+  };
+
+  s.actorTalk = function(msg) {
+    var oldact, a;
+    if(s._actorToPrintStrFor == 0xFF) {
+      if(!s._keepText) {
+        s.stopTalk();
+      }
+      s.setTalkingActor(0xFF);
+    } else {
+      a = s.getActor(s._actorToPrintStrFor);
+      if(!a.isInCurrentRoom()) {
+        oldact = 0xFF;
+      } else {
+        if(!s._keepText) {
+          s.stopTalk();
+        }
+        s.setTalkingActor(a.number);
+        if(!s._string[0].no_talk_anim) {
+          a.runActorTalkScript(a.talkStartFrame);
+          s._useTalkAnims = true;
+        }
+        oldact = s.getTalkingActor();
+      }
+      if(oldact >= 0x80)
+        return;
+    }
+
+    a = s.getActor(s.getTalkingActor());
+    var text = s._string[0];
+    text.text = msg;
+    s._talkDelay = 0;
+    s._haveMsg = 0xFF;
+    s.scummVar("have_msg", 0xFF);
+    if(s.scummVar("charcount") != 0xFF)
+      s.scummVar("charcount", 0);
+    s._haveActorSpeechMsg = true;
+    window.setTimeout(function() {
+      s.stopTalk();
+    }, 5 * 1000);
+  };
+
+
+  s.stopTalk = function() {
+    var act, a;
+    s._haveMsg = 0;
+    s._talkDelay = 0;
+    a = s.getTalkingActor();
+    if(a && a < 0x80) {
+      act = s.getActor(a);
+      if(act.isInCurrentRoom() || s._useTalkAnims) {
+        act.runActorTalkScript(a.talkStopFrame);
+        s._useTalkAnims = false;
+      }
+      s.setTalkingActor(0xFF);
+    }
+    s._keepText = false;
+  };
 
   s.costumeLoader = new s.CostumeLoader();
   s.costumeRenderer = new s.CostumeRenderer();

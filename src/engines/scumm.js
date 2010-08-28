@@ -51,6 +51,10 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     _currentPalette: [],
     _palDirtyMin: 0,
     _palDirtyMax: 0,
+    _haveMsg: 0,
+    _haveActorSpeechMsg: false,
+    _useTalkAnims: false,
+    _defaultTalkDelay: 0,
     _curPalIndex: 0,
     _resourceHeaderSize: 8,
     _resourceLastSearchSize: 0,
@@ -176,6 +180,7 @@ var PARAM_1 = 0x80, PARAM_2 = 0x40, PARAM_3 = 0x20;
     },
     updateScummVars: function() {
       var t = this;
+      t.scummVar("have_msg", t._haveMsg);
       t.scummVar("mouse_x", 10);
       t.scummVar("mouse_y", 10);
     },

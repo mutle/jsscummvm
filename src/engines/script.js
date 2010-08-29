@@ -959,7 +959,9 @@
         break;
         case 14: // unknown
           table = s.getWordVararg();
-          // colormap Stuff
+          for(var i = 0; i < 16; i++)
+            s._charsetColorMap[i] = parseInt(table[i]) ? parseInt(table[i]) : 0;
+        break;
         default:
           if(s._opcodeCommands & 0x1F <= 14)
             log("unimplemented cursorCommand opcode " + (s._opcode & 0x1F));
@@ -1323,6 +1325,10 @@
             j = s.getVarOrDirectByte(PARAM_2);
             act.setPalette(i, j);
           break;
+          case 12: // talk color
+            act.talkColor = s.getVarOrDirectByte(PARAM_1);
+            log("set talk color "+act.talkColor);
+          break;
           case 13: // actor name
             s.loadPtrToResource("actor_name", a);
             log("loaded actor "+a+": "+s.getResourceAddress("actor_name", a).readString());
@@ -1349,7 +1355,6 @@
           case 0:
           case 3: // sound
           case 15:
-          case 12: // talk color
           case 16: // actor width
             //unimplemented
           break;

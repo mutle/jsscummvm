@@ -648,18 +648,18 @@
     for(i = 0; i < texts.length; i++) {
       text = texts[i];
       if(!text || !text.text || text.text == " ") continue;
+      if(text.x <= 0) text.x = Math.floor(width / 2);
+      if(text.y <= 0) text.y = Math.floor(height * 0.75);
       if(i == 0) {
         ctx.font = "12px Helvetica";
         ctx.textAlign = "center";
       } else {
         ctx.font = "16px Helvetica";
         ctx.textAlign = "center";
-        if(text.x <= 0) text.x = Math.floor(width / 2);
-        if(text.y <= 0) text.y = Math.floor(height * 0.75);
       }
       t._charsetColorMap[1] = text.color;
       ctx.fillStyle = t.paletteColor(t._charsetColorMap[text.color]);
-      ctx.strokeStyle = "#000";
+      ctx.strokeStyle = "#fff";
       output = t.convertText(text.text).split("\n");
       var y = text.y;
       for(var j = 0; j < output.length; j++) {

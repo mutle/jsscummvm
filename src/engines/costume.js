@@ -1080,10 +1080,13 @@
       text.x = 0;
       text.y = 0;
       text.text = "";
+      // log("text at "+text.x+"/"+text.y);
       // clearFocusRectangle
     } else if(i > 0) {
       text.x = s._actors[i].pos.x - (s._camera.cur.x - (s._screenWidth / 2));
-      text.y = s._actors[i].top - (s._camera.cur.y - (s._screenHeight / 2));
+      text.y = s._actors[i].top - (s._camera.cur.y - (s._screenHeight / 2)) - 128;
+      if(text.y <= 15) text.y = 15;
+      log("text at "+text.x+"/"+text.y);
       // setFocusRectangle
     }
     s.scummVar("talk_actor", i);
@@ -1116,7 +1119,9 @@
     }
 
     a = s.getActor(s.getTalkingActor());
+    if(!a) return;
     var text = s._string[0];
+    text.color = a.talkColor;
     text.text = msg;
     s._talkDelay = 0;
     s._haveMsg = 0xFF;
